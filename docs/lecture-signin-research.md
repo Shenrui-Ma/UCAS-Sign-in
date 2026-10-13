@@ -643,11 +643,129 @@ RSS 是最新在前，报道比预告新因而先出现、先被保留。**一�
 - **后台自动更新讲座时间表**：不可能 —— 它需要登录，而登录需要人。
   这一点是数据源的固有属性，不是实现偷懒。
 
+### 10.14 现场签到二维码的编码与通道：小程序解包确证（2026-10-13，1.3.0）
+
+**这解决的是 §11 里挂了最久的一条**：「现场二维码里到底编码了什么」。
+此前只能标注「未现场取证前不得假设」，而它直接决定扫码打卡能不能做、怎么做。
+
+#### 方法
+
+解包「轻新课堂」微信小程序 `wxdd3bd7d4acf54723`：`__APP__.wxapkg` 用 V1MMWX 方案解密
+（PBKDF2-SHA1(AppID, `saltiest`, 1000, 32) → AES-256-CBC(IV = `the iv: 16 bytes`) 解前 1024 字节
+→ 其余字节与 AppID 倒数第二字符的 ASCII 异或），得到 `app-service.js`，
+再逐字读取扫码入口的两处实现。
+
+#### 结论一：同一个扫码入口分流**四件事**，不是一件事
+
+`pages/ALightClassesPro/ALightClassesProIndex.js` 的 `cliclScanCode` 按**固定顺序**判断：
+
+| 序号 | 特征串 | 去向 | 是否签到 |
+| --- | --- | --- | --- |
+| 1 | `app/course/stu_scan_sign.action` | 现场签到（旧 iClass 通道） | ✅ |
+| 2 | `app/common/stuScanSign` | 现场签到（7.0 平台通道，读 `data.STATUS`） | ✅ |
+| 3 | `idesktop` | `navigateTo ScanCodeLoginView`（桌面端扫码登录） | ❌ |
+| 4 | `/schoolCourse/stuJoinCourse/` | 跳转加入课程页 | ❌ |
+| 5 | `app/course/saomadati.action` | 课堂答题（**该分支为空**，等于忽略） | ❌ |
+| 6 | 都不含 | `showToast("请提供有效的二维码！")` | ❌ |
+
+**顺序不可调换**：签到分支必须排在 3/4/5 之前。3/4/5 的特征串不会出现在签到码里，
+但只要有一个签到码的文本里恰好含 `idesktop`，把非签到分支判在前面就会把该签到的码判丢。
+
+→ 对实现的直接约束：**先分类，再决定发不发请求**。认成 3/4/5 时必须一个请求都不发。
+（本项目的实现：`attendance/ScanPayload.kt`。）
+
+#### 结论二：旧通道签到请求的确切形态
+
+`gotoSignWithUrl` 的实现是：
+
+```js
+t.requestPost(o + "&id=" + e.globalData.userInfo.uid, null, {})
+// 成功判据：顶层 o.STATUS == "0"，否则 toast o.ERRMSG
+```
+
+其中 `o` 由 `cliclScanCode` 这样拼出来：
+
+```js
+var a = "app/course/stu_scan_sign.action?",        // 注意：a 里含 "?"
+    n = a + t.split(a)[1],                          // 只取 "?" 之后的 query
+    l = o.data.schoolHttpsUrl + n                   // 拼回学校自己的域名
+```
+
+而 `requestPost` 的完整形态（逐字）：
+
+| 项 | 值 |
+| --- | --- |
+| 方法 | **POST** |
+| Content-Type | `application/x-www-form-urlencoded` |
+| 请求体 | 空（`data: {}` 序列化后为空串） |
+| 头部 | `sessionId`（= `userInfo.result.sessionId`）、`Cookie`（= `globalData.cookieToken`）、`Authorization`（= storage） |
+| 成功判据 | `STATUS == "0"` |
+
+**没有第二层签名、nonce、HMAC 或挑战应答** —— 这条链路可以把二维码里的参数原样重放。
+
+#### 结论三：域名取自**学校配置**，二维码里的域名被丢弃
+
+`schoolHttpsUrl = globalData.schoolInfo.coursePlatformHttpsUrl`。小程序把二维码里的
+`scheme://host/path` 整个丢掉，只保留 `?` 之后的 query。
+
+**同一件事在另一处入口用的是另一个域名**：`pages/.../scanBtnClick`（「我的」页）命中同一特征串后，
+拼的是 `globalData.schoolInfo.schoolServiceURL`，且请求体是 `{id, longitude, latitude}`
+（**带位置**，只是 `longitude` / `latitude` 取自它自己的定位，不是二维码里的）。
+
+→ 对本项目的意义：这两个 host 里，`schoolServiceURL + "app/"` 与本项目的
+`BASE_URL`（`.../app/`）**同源**，也与原版 RememberSignIn 的一致。
+而 `sessionId` 只由 `BASE_URL` 这台服务器签发 —— 因此**必须**把请求发回
+`BASE_URL`，否则认证必然失败，还等于把会话凭据送给二维码里随便写的域名。
+扫码页面上会明确提示「二维码指向 X，已改用本校通道 Y」，避免失败时无法归因。
+
+#### 结论四：**扫码通道不需要位置**，课表自动签到才需要
+
+同一份 `app-service.js` 里，课表自动签到（`COURSE_SIGN_IN` =
+`schoolServiceURL + "app/course/stu_auto_sign.action"`）的请求体是：
+
+```js
+{ id, courseSchedId, routerInfo, longitude, latitude, machineInfo }
+```
+
+`routerInfo` 是 **WiFi BSSID**，`longitude`/`latitude` 是 GPS。也就是说：
+
+| 通道 | 端点 | 要 GPS | 要 BSSID |
+| --- | --- | --- | --- |
+| 现场扫码 | `app/course/stu_scan_sign.action` | ❌ | ❌ |
+| 课表自动 | `app/course/stu_auto_sign.action` | ✅ | ✅ |
+
+→ 直接支撑了本项目的一条**隐私约束**：扫码打卡只申请相机权限，
+不因为扫码申请定位，也不伪造定位。
+
+#### 结论五：兜底形态（本项目唯一的额外宽容）
+
+若二维码既不含上面任何特征串，**整段原文恰好是** 7 位数字（`courseSchedId`）
+或 32 位十六进制（`timeTableId`），本项目按现场签到处理。
+小程序对这种码只会报「请提供有效的二维码」；但用户正站在班牌前面，
+且这条兜底同样先过格式校验（不合格仍是一个请求都不发），因此值得宽容。
+
+> 仍未确证：`app/common/stuScanSign`（7.0 平台）在本校**没有可验证环境**。
+> 本项目按「识别 + 与旧通道同形态提交」实现，真伪交由服务器回答；
+> 这一条**不计入**已确证结论。
+
+#### 对本轮实现的可核对清单
+
+- 载荷分类顺序与小程序逐条一致，且非签到类别不发请求 → `ScanPayload.kt` + `ScanPayloadTest.kt`
+- POST / 空表单体 / `sessionId` 头 / `id` 追加 → `QingxinApiService.submitScanSign`
+- 域名一律改回 `BASE_URL`，二维码域名只用于提示 → `QingxinApiService.buildScanUrl`
+- `timestamp` 沿用二维码原值，缺失才补校时 → `ScanPayload.DirectSign.withTimestamp`
+- 成功判据在扫码通道放开为只认 `STATUS == "0"` → `QingxinApiService.parseSignResult(json, requireStuSignStatus = false)`
+- 只申请相机，不申请定位 → `AndroidManifest.xml`（已用 `aapt2 dump permissions` 核对过产物）
+
 ## 11. 待核实
 
 - **`cId` ↔ 7 位 `courseSchedId` 的映射**（**本轮最高优先级**）：注册表侧已确认无 7 位 / 32 位标识，故只能看移动端课表通道（探针 A1/A2/B1/C1，需登录）。**这是决定「讲座能否一键签到」的唯一未决点。**
 - **注册表 `cId` 与移动端 `courseId` / `courseNum` 是否同一体系**：若移动端课程层编号恰好等于注册表 `cId`，则 bridge 成立（探针 B1 即为此设计）；目前**无任何离线证据**（App 单测里的 `courseId` 是合成值）。
-- **现场二维码里到底编码了什么**：可能是 `cId`、复合码、`courseSchedId` 或一次性 token。未现场取证前不得假设。**若它编码的是 `cId`，则签到链路与现有 `stu_scan_sign.action` 不同，需要另一条通道。**
+- ~~**现场二维码里到底编码了什么**~~ → **已由 §10.14 收敛（2026-10-13）**。二维码里可能是
+  「旧 iClass 签到路径 + query」「7.0 平台签到路径」「桌面登录」「加入课程」「课堂答题」
+  五类之一，本项目已按小程序的分流顺序逐条对应实现。此前担心的「若它编码的是 `cId`，
+  则签到链路与现有 `stu_scan_sign.action` 不同」**未成立**：扫码通道就是把 query 原样重放。
+  仍未确证的是 7.0 平台通道（`app/common/stuScanSign`）在本校的可用性 —— 无可验证环境。
 - **`/subject/toSign` + `lectureId`**：本仓库与现有留档中**未找到**实际调用样例（仅作为外部传言存在）。要用它必须先拿到可验证的抓包或源码证据；即便证实，也只是报名接口。
 - **一期讲座对应几条 `subject`**：**已由本轮实测收敛** —— `M1118` 为 `6960/6961/6962` 三个连号 `subject`（三校区各一），与 iClass 注册表「一场 = 3 个连号 `cId`」**结构一致**。此前观察到的 2 / 3 / 5 条情形应是**改期 / 加场**造成的额外条目（注册表侧同样有 `M1165`/`M1166` 雁栖湖重复条目）。仍不建议写成「恒定 3 条」，但**默认值取 3** 是有实测支撑的。
 - **讲座能否拿到 32 位 `timeTableId`**：`timeTableId` 变体本身已在客户端代码中确认，但它是否可能出现在讲座类条目上，尚未验证。
@@ -662,3 +780,10 @@ RSS 是最新在前，报道比预告新因而先出现、先被保留。**一�
 - **探针的 B6 / B7（本轮新增）**：`tools/README.md` 的「探测项一览」与「找『下一场』」两节；源码在本机 `tools/src/probe.py`（已 gitignore），仓库内只提交不含端点字面量的 `tools/iclass_probe.pyz`。
 - **feed ↔ 注册表 join 与节奏分析（本轮新增）**：`tools/out/_rhythm.py`（本机离线脚本）输出的形态/节奏统计；`tools/out/_gapscan.py` 补扫的 `cId` 57000–57155（找回 `M1118`–`M1120`）。两份公开快照的 `title` 与注册表课程名命中 114/114 与 341/345，是本轮 join 的基础。
 - 签到链路与本项目约束：`android-app/.../lecture/LectureModels.kt`（`LectureSource`、`signable` 门控）、`android-app/.../network/QingxinApiService.kt`（`stu_scan_sign.action`、7 位 / 32 位判定、`get_timestamp` 校时）、`android-app/.../attendance/LectureAutoSignBridge.kt`（默认关闭）、`tools/README.md`（讲座是否进课表的探针问题定义）。
+- **小程序解包（本轮新增，§10.14 的全部依据）**：本机微信目录下的
+  `applet/packages/wxdd3bd7d4acf54723/64/__APP__.wxapkg`（**不入库**，含用户态数据）。
+  解密后取 `app-service.js`；本节引用的实现都出自
+  `pages/ALightClassesPro/ALightClassesProIndex.js` 的 `cliclScanCode` / `gotoSignWithUrl` /
+  `gotoNewSignWithUrl`、`pages/.../scanBtnClick`、以及 `app-service.js` 顶层的 URL 常量表
+  （`COURSE_SIGN_IN`）与 `requestPost` 定义。
+  仓库内**不复现**任何小程序代码或密钥，只记录结论。
