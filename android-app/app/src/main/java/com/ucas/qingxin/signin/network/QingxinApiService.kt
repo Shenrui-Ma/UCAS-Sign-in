@@ -6,6 +6,8 @@ import com.ucas.qingxin.signin.data.CourseQueryResult
 import com.ucas.qingxin.signin.data.SchoolSession
 import com.ucas.qingxin.signin.data.SignOutcome
 import com.ucas.qingxin.signin.data.SignResult
+import com.ucas.qingxin.signin.logging.LogKind
+import com.ucas.qingxin.signin.logging.SignLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -25,6 +27,14 @@ import java.util.regex.Pattern
  */
 class QingxinApiService(
     private val client: OkHttpClient = defaultClient(),
+    /**
+     * 签到相关的诊断日志；`null` 表示不记（单测与不关心日志的调用方）。
+     *
+     * 放在 API 层而不是界面层，是因为**最有诊断价值的东西只有这里有**：
+     * 学校响应正文。界面能拿到的是已经翻译过的 [SignResult]，
+     * 一旦「已失效」这类含糊拒绝出现，没有正文就无法分辨是码过期还是参数不对。
+     */
+    private val log: SignLog? = null,
 ) {
     companion object {
         /**
@@ -224,7 +234,7 @@ class QingxinApiService(
             .addQueryParameter("timestamp", schoolTimestampMs.toString())
             .addQueryParameter("id", session.userId)
             .build()
-        val json = executeJson(
+        val json = executeJsonLogged(
             Request.Builder()
                 .url(url)
                 .header("User-Agent", USER_AGENT)
@@ -233,8 +243,39 @@ class QingxinApiService(
                 .get()
                 .build(),
             timeoutSec = 10,
+            source = "一键 / 手动打卡（GET）",
         )
         parseSignResult(json)
+    }
+
+    /**
+     * 发一次请求并记日志，返回解析后的 JSON。
+     *
+     * 日志写在**这里**而不是各个调用点：这样「请求地址 + 响应正文 + 判定结果」
+     * 一定成组出现，不会出现只记了一半、事后无法配对的日志。
+     */
+    private fun executeJsonLogged(request: Request, timeoutSec: Long, source: String): JSONObject {
+        val logger = log
+        if (logger == null) return executeJson(request, timeoutSec)
+
+        logger.append(
+            LogKind.REQUEST,
+            "来源" to source,
+            "方法" to request.method,
+            "地址" to SignLog.maskOwnId(request.url.toString()),
+        )
+        return try {
+            val (json, body) = executeJsonWithBody(request, timeoutSec)
+            logger.append(LogKind.RESPONSE, "HTTP" to "200", "正文" to body)
+            json
+        } catch (e: Exception) {
+            // 失败也要记：现场最常见的失败就是网络层直接抛。
+            logger.append(
+                LogKind.RESPONSE,
+                "异常" to (e::class.java.simpleName + ": " + (e.message ?: "")),
+            )
+            throw e
+        }
     }
 
     /** Build QR content URL exactly as original ez0.d(). */
@@ -282,7 +323,10 @@ class QingxinApiService(
      *    RememberSignIn 的形态；扫码这条通道小程序用的是 POST。两者在本项目里
      *    各自保留，谁也不要「统一」成对方 —— 同一个学校对不同历史实现的兼容程度不同，
      *    把已验证过的请求形态改掉是在拿唯一稳定的参照物冒险。
-     * 2. **`timestamp` 沿用二维码里的值**（见 `ScanPayload.DirectSign.withTimestamp`）。
+     * 2. **`timestamp` 不新增**：二维码带了就原样带着，二维码没带就**不补**
+     *    （见 `ScanPayload.DirectSign.needsTimestamp`）。小程序这一步只有
+     *    `二维码query + "&id=" + uid`，从不写时间戳；1.3.1 曾在这里自行补一个，
+     *    已按「不偏离唯一已知可用的客户端」改掉（`docs/lecture-signin-research.md` §10.16）。
      * 3. **`id` 用本次登录用户自己的** —— 小程序的 `userInfo.uid` 与我们的
      *    `session.userId` 是同一个字段。
      *
@@ -295,7 +339,7 @@ class QingxinApiService(
     suspend fun submitScanSign(session: SchoolSession, path: String, query: String): SignResult =
         withContext(Dispatchers.IO) {
             val url = withOwnUserId(buildScanUrl(path, query), session.userId)
-            val json = executeJson(
+            val json = executeJsonLogged(
                 Request.Builder()
                     .url(url)
                     .header("User-Agent", USER_AGENT)
@@ -306,6 +350,7 @@ class QingxinApiService(
                     .post(FormBody.Builder().build())
                     .build(),
                 timeoutSec = 10,
+                source = "扫码打卡（POST 空表单体）",
             )
             parseSignResult(json, requireStuSignStatus = false)
         }
@@ -484,7 +529,16 @@ class QingxinApiService(
         return builder
     }
 
-    private fun executeJson(request: Request, timeoutSec: Long = 15): JSONObject {
+    private fun executeJson(request: Request, timeoutSec: Long = 15): JSONObject =
+        executeJsonWithBody(request, timeoutSec).first
+
+    /**
+     * 与 [executeJson] 相同，但**同时**把响应正文回传。
+     *
+     * 只有需要写诊断日志的调用方用它（见 [log] 的说明）：正文是分辨
+     * 「学校不认这个标识」与「我们的参数不对」的唯一原始依据。
+     */
+    private fun executeJsonWithBody(request: Request, timeoutSec: Long = 15): Pair<JSONObject, String> {
         val callClient = if (timeoutSec == 15L) {
             client
         } else {
@@ -498,7 +552,7 @@ class QingxinApiService(
             if (!response.isSuccessful) {
                 throw ApiException("HTTP_${response.code}", "网络请求失败 (${response.code})")
             }
-            return JSONObject(body.ifBlank { "{}" })
+            return JSONObject(body.ifBlank { "{}" }) to body
         }
     }
 }

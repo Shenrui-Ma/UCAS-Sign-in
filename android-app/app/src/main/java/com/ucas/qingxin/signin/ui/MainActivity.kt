@@ -91,6 +91,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.ucas.qingxin.signin.R
+import com.ucas.qingxin.signin.QingxinApp
 import com.ucas.qingxin.signin.attendance.AutoSignExclusions
 import com.ucas.qingxin.signin.attendance.KeepAliveHelper
 import com.ucas.qingxin.signin.data.AttendanceUiStatus
@@ -106,7 +107,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
-private enum class AppScreen { Home, Schedule, Lecture, LectureSchedule, Manual, Scan, Settings }
+private enum class AppScreen { Home, Schedule, Lecture, LectureSchedule, Manual, Scan, Settings, Logs }
 
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
@@ -185,7 +186,17 @@ class MainActivity : ComponentActivity() {
                                 state = state,
                                 vm = vm,
                                 onBack = { screen = AppScreen.Home },
+                                onOpenLogs = { screen = AppScreen.Logs },
                             )
+                            screen == AppScreen.Logs -> {
+                                // 日志器挂在 Application 上：API 层（唯一能看到学校响应正文的
+                                // 地方）也往同一个实例里写，因此这里必须取同一份。
+                                val app = LocalContext.current.applicationContext as QingxinApp
+                                LogScreen(
+                                    log = app.signLog,
+                                    onBack = { screen = AppScreen.Settings },
+                                )
+                            }
                             screen == AppScreen.Lecture -> LectureScreen(
                                 state = lectureState,
                                 vm = lectureVm,
@@ -1091,10 +1102,40 @@ private fun openReleasePage(context: Context, release: UpdateRelease) {
 }
 
 @Composable
+/**
+ * 「签到日志」入口。
+ *
+ * 刻意放在「保活」之后、「版本与更新」之前：它不是日常要用的功能，
+ * 但**出问题时要找得到** —— 而用户找它的场景就是「刚才打卡失败了」。
+ * 因此说明文案直接写出「日志里有什么」和「失败时发出来」，而不是只写四个字。
+ */
+private fun SignLogCard(onOpen: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("签到日志", fontWeight = FontWeight.Bold)
+            Text(
+                "每次扫码与签到都会自动记录：二维码原文、本应用发出的地址、学校回的正文。" +
+                    "打卡失败时把这份日志发出来，就不用靠回忆和截图去复原现场。",
+                fontSize = 12.sp,
+                color = Color(0xFF5B6B63),
+                lineHeight = 18.sp,
+            )
+            TextButton(onClick = onOpen, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                Text("查看 / 分享日志")
+            }
+        }
+    }
+}
+
+@Composable
 private fun SettingsScreen(
     state: AppUiState,
     vm: MainViewModel,
     onBack: () -> Unit,
+    onOpenLogs: () -> Unit,
 ) {
     val activity = LocalContext.current as? ComponentActivity
     // 每次回到前台都重新核对保活状态，并借机重试一次守护服务（冷启动时可能被系统拒绝）。
@@ -1147,6 +1188,7 @@ private fun SettingsScreen(
         item { AutoSignCard(state, vm) }
         item { AutoSignExcludeCard(state, vm) }
         item { KeepAliveCard(state, vm) }
+        item { SignLogCard(onOpenLogs) }
         item { UpdateCard(state, vm) }
         item {
             val context = LocalContext.current

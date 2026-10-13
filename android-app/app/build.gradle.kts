@@ -133,9 +133,11 @@ android {
         // versionCode 必须单调递增：任何低于已装版本的数值都会导致无法覆盖安装。
         // 43 → 44：新增「扫码打卡」（相机扫码 + 载荷分类 + 走学校扫码通道提交）。
         // 44 → 45：修 1.3.0 的页头布局 —— 扫码入口挤掉了学号的显示宽度。
-        versionCode = 45
-        // 1.3.0 → 1.3.1：只修界面，不改任何接口行为，因此升修订号。
-        versionName = "1.3.1"
+        // 45 → 46：扫码失败时把「二维码原文 / 本次提交」摊给用户看；去掉扫码通道
+        //           多补的 timestamp（改为纯重放）；新增「签到日志」（设置里可查看/分享/保存）。
+        versionCode = 46
+        // 1.3.1 → 1.3.2：扫码通道只去掉一处多余的参数，其余是新的诊断能力。
+        versionName = "1.3.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // 端点来自本地 local.properties，绝不硬编码（见文件顶部说明）。

@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.ucas.qingxin.signin.QingxinApp
 import com.ucas.qingxin.signin.attendance.ScanPayload
 import com.ucas.qingxin.signin.data.SignOutcome
+import com.ucas.qingxin.signin.data.SignResult
+import com.ucas.qingxin.signin.logging.LogKind
 import com.ucas.qingxin.signin.network.ApiException
 import com.ucas.qingxin.signin.network.QingxinApiService
 import kotlinx.coroutines.CancellationException
@@ -38,6 +40,25 @@ data class ScanUiState(
     val success: String = "",
     /** 失败原因。 */
     val error: String = "",
+    /**
+     * 二维码原文（原样，一个字符都没改）。
+     *
+     * 为什么要在界面上留一份：现场打卡只有一次机会 —— 用户站在班牌前，而码本身还在轮换。
+     * 一旦失败，能解释「学校为什么拒」的原始证据就只有这段原文；没有它，
+     * 用户和维护者都只能猜。1.3.1 的一次真机失败正是卡在这里（见
+     * `docs/lecture-signin-research.md` §10.16）。
+     */
+    val rawText: String = "",
+    /**
+     * 本次**实际提交**到的地址（`query` 原样，`id` 只写参数名、不写用户编号）。
+     *
+     * 与 [rawText] 成对使用：前者是学校发出来的东西，这一条是我们发出去的东西。
+     * 两者一比，就能看出参数名与时间戳有没有被我们动过 —— 这正是「已失效」
+     * 这类含糊拒绝最需要的分辨依据。
+     */
+    val submittedUrl: String = "",
+    /** `timestamp` 的来源说明（二维码自带 / 本校校时补入）。 */
+    val timestampNote: String = "",
 ) {
     /**
      * 是否已有终态（成功或失败）。
@@ -97,13 +118,26 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             fail("应用尚未初始化完成，请稍后重试")
             return
         }
+        // 原文先落界面：下面每一条分支（含 Unknown 与 NotSign）都要能回看它。
+        _ui.update { it.copy(rawText = raw) }
+        // 现场诊断：原文与分类都落盘。分类决定「发不发请求」，因此两者必须成组出现 ——
+        // 只记原文会看不出「为什么没发请求」，只记分类则丢了原始证据。
+        app.signLog.append(LogKind.SCAN, "原文" to raw)
         // 分类顺序见 ScanPayload 的说明，与小程序逐条对应。
         when (val payload = ScanPayload.parse(raw)) {
-            is ScanPayload.NotSign ->
+            is ScanPayload.NotSign -> {
+                app.signLog.append(
+                    LogKind.CLASSIFY,
+                    "判定" to "NotSign / ${payload.kind.label}",
+                    "动作" to "不发请求",
+                )
                 fail("扫到的是${payload.kind.label}，不是签到码。${payload.kind.hint}")
+            }
 
-            is ScanPayload.Unknown ->
+            is ScanPayload.Unknown -> {
+                app.signLog.append(LogKind.CLASSIFY, "判定" to "Unknown", "动作" to "不发请求")
                 fail("这张二维码不是轻新课堂的签到码，请对准班牌上的签到码再扫一次")
+            }
 
             is ScanPayload.DirectSign -> {
                 _ui.update {
@@ -112,6 +146,13 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                         hostNote = hostNoteFor(payload.qrHost),
                     )
                 }
+                app.signLog.append(
+                    LogKind.CLASSIFY,
+                    "判定" to "DirectSign / ${payload.label}",
+                    "是否原样重放" to if (payload.isReplay) "是（照抄二维码 query）" else "否（由本应用拼请求）",
+                    "二维码自带时间戳" to (payload.qrTimestamp ?: "无"),
+                    "动作" to "发请求",
+                )
                 viewModelScope.launch { submitDirect(payload) }
             }
 
@@ -120,8 +161,15 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(
                         recognized = "已识别：7.0 平台签到码",
                         hostNote = hostNoteFor(payload.qrHost),
+                        submittedUrl = previewOf(payload.path, payload.query),
+                        timestampNote = "7.0 通道按原样重放，本项目不追加任何参数",
                     )
                 }
+                app.signLog.append(
+                    LogKind.CLASSIFY,
+                    "判定" to "PlatformSign / 7.0 平台签到码",
+                    "动作" to "发请求",
+                )
                 viewModelScope.launch { runSign(payload.path, payload.query) }
             }
         }
@@ -146,13 +194,42 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             payload.submitQuery
         }
+        _ui.update {
+            it.copy(
+                submittedUrl = previewOf(payload.path, query),
+                timestampNote = timestampNoteFor(payload),
+            )
+        }
         runSign(payload.path, query)
+    }
+
+    /**
+     * `timestamp` 的来源说明 —— 扫码现场最值得交代的一句话。
+     *
+     * 三种情形必须能分开看：码里本来就有（原样带着）、码里没有但我们照抄重放（**不补**）、
+     * 请求由我们拼所以要自己补（补）。学校那句「签到码已失效」与这条线的相关性最高，
+     * 因此它必须出现在结果卡片上，而不是只写在注释里。
+     */
+    private fun timestampNoteFor(payload: ScanPayload.DirectSign): String = when {
+        payload.isReplay && payload.qrTimestamp != null ->
+            "timestamp 取自二维码，原样重放，未增删任何参数"
+        payload.isReplay ->
+            "二维码未带 timestamp，按原样重放（不代学校补）"
+        else ->
+            "二维码只是一个裸编号，请求由本应用拼出，已用本校校时补入 timestamp"
     }
 
     private suspend fun runSign(path: String, query: String) {
         _ui.update { it.copy(submitting = true) }
         try {
             val result = app.attendanceRepository.signScanTarget(path, query)
+            app.signLog.append(
+                LogKind.OUTCOME,
+                "判定" to result.outcome.name,
+                "STATUS" to result.status,
+                "ERRCODE" to result.errCode,
+                "提示" to result.message,
+            )
             if (result.outcome == SignOutcome.SIGNED) {
                 _ui.update {
                     it.copy(
@@ -161,20 +238,50 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             } else {
-                fail(result.message.ifBlank { outcomeMessage(result.outcome) })
+                fail(explain(result))
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ApiException) {
             val loginExpired = e.code == "LOGIN_EXPIRED" || e.code == "LOGIN_REJECTED"
+            app.signLog.append(LogKind.OUTCOME, "异常" to "${e.code}: ${e.message ?: ""}")
             fail(if (loginExpired) "登录已过期，请返回首页重新登录" else e.message ?: e.code)
         } catch (e: Exception) {
+            app.signLog.append(LogKind.OUTCOME, "异常" to "${e::class.java.simpleName}: ${e.message ?: ""}")
             fail(e.message ?: "签到失败")
         }
     }
 
     private fun fail(message: String) {
         _ui.update { it.copy(submitting = false, success = "", error = message) }
+    }
+
+    /**
+     * 失败原因：能给可执行动作的就给，给不出才只回显学校的原话。
+     *
+     * 「签到码已失效」必须由我们补一句：学校的签到码是**短命**的 —— 原版实现里
+     * 二维码刷新上限就是 5 秒（[QingxinApiService.QR_REFRESH_CAP_MS]，
+     * 由原版反编译确认），所以它那句「请刷新后重试」对学生等于没说。
+     * 现场真正该做的是：别停下来看提示，直接对准班牌最新一屏重扫。
+     */
+    private fun explain(result: SignResult): String {
+        val base = result.message.ifBlank { outcomeMessage(result.outcome) }
+        if (result.outcome != SignOutcome.QR_EXPIRED) return base
+        return "$base\n班牌的签到码大约每 5 秒轮换一次，请对准最新一屏立刻重扫。"
+    }
+
+    /**
+     * 预览本次提交到的地址。
+     *
+     * 这里**重新拼一次**而不是把 URL 从 API 层回传：目的在于这一页不依赖任何请求结果
+     * 也能说清「发到哪」，且失败时（拿不到响应）也能说清。
+     * `id` 只写参数名、不写用户编号 —— 这段文字是给人看甚至给人转发的，
+     * 没必要把身份一起送出去，而诊断需要的信息（参数名、时间戳）一个都不少。
+     */
+    private fun previewOf(path: String, query: String): String {
+        val url = app.api.buildScanUrl(path, query)
+        val sep = if ('?' in url) "&" else "?"
+        return "$url${sep}id=（本人学号）"
     }
 
     /** 二维码域名与本项目通道不一致时给一句人话；一致或没写域名时返回空串。 */

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -40,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -325,6 +327,11 @@ private fun ScanResultCard(state: ScanUiState, onRescan: () -> Unit, onBack: () 
             if (state.hostNote.isNotBlank()) {
                 Text(state.hostNote, fontSize = 12.sp, color = SCAN_TEXT_SUB, lineHeight = 18.sp)
             }
+            if (state.timestampNote.isNotBlank()) {
+                Text(state.timestampNote, fontSize = 12.sp, color = SCAN_TEXT_SUB, lineHeight = 18.sp)
+            }
+            if (state.rawText.isNotBlank()) ScanTrace(label = "二维码原文", value = state.rawText)
+            if (state.submittedUrl.isNotBlank()) ScanTrace(label = "本次提交", value = state.submittedUrl)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = onRescan,
@@ -339,3 +346,35 @@ private fun ScanResultCard(state: ScanUiState, onRescan: () -> Unit, onBack: () 
 private fun hasCameraPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
         PackageManager.PERMISSION_GRANTED
+
+/**
+ * 一条现场诊断信息：浅底、等宽、可选中。
+ *
+ * ## 为什么值得占结果卡片的地方
+ * 现场打卡只有一次机会，而学校的拒绝理由常常是**含糊**的（「签到码已失效」既可能是
+ * 码真的轮换过期了，也可能是我们发出去的参数名不对）。这两种原因在界面上必须可分，
+ * 否则每次都要靠重新抓包去猜。
+ *
+ * 等宽 + 可选中是有意的：失败后用户要做的事就是把这串东西整段复制出来核对或转发，
+ * 比例字体与不可选会让这件事很难受。它排在「成功了没有」之后，不抢主信息的位置。
+ */
+@Composable
+private fun ScanTrace(label: String, value: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SCAN_WARN_BG, RoundedCornerShape(10.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(label, fontSize = 11.sp, color = SCAN_TEXT_SUB)
+        SelectionContainer {
+            Text(
+                value,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                lineHeight = 16.sp,
+            )
+        }
+    }
+}

@@ -115,8 +115,33 @@ class ScanPayloadTest {
     }
 
     @Test
-    fun `二维码没带 timestamp 时_补上校时且不破坏原有参数`() {
+    fun `二维码没带 timestamp 时_原样重放而不代学校补`() {
+        // 这是 1.3.1 的实测失败点：班牌给的 query 里没有 timestamp，
+        // 而轻新课堂只做 `二维码query + "&id=" + uid`，从不新增时间戳。
+        // 多补一个值是**本项目独有的**改动，必须去掉（见 DirectSign.needsTimestamp）。
         val payload = direct("app/course/stu_scan_sign.action?courseSchedId=1234567")
+        assertTrue(payload.isReplay)
+        assertFalse(payload.needsTimestamp)
+        assertEquals("courseSchedId=1234567", payload.submitQuery)
+        // 即使调用方硬塞一个校时值，也必须原样不改。
+        assertEquals(payload.submitQuery, payload.withTimestamp(42L))
+    }
+
+    @Test
+    fun `讲座班牌的 32 位标识_同样是原样重放`() {
+        // 讲座就是一个课程，班牌给的标识走的是同一条通道；学生是否选课由服务器判，
+        // 因此这里**不需要**任何本地课表信息。
+        val payload = direct("app/course/stu_scan_sign.action?timeTableId=$hex32")
+        assertEquals("32 位二维码标识", payload.label)
+        assertFalse(payload.needsTimestamp)
+        assertEquals("timeTableId=$hex32", payload.submitQuery)
+    }
+
+    @Test
+    fun `裸编号才由我们拼请求_这时才补时间戳`() {
+        // 没有 query 可重放 ⇒ 请求只能由我们拼完整 ⇒ 必须带新鲜度证明。
+        val payload = direct("1234567")
+        assertFalse(payload.isReplay)
         assertTrue(payload.needsTimestamp)
         assertEquals("courseSchedId=1234567&timestamp=42", payload.withTimestamp(42L))
     }

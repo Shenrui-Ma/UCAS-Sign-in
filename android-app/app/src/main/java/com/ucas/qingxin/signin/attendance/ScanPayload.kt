@@ -33,6 +33,20 @@ import java.util.Locale
  * 因此这里退化到 [SignCode]（与手动录入同一套规则、同一套格式校验）。
  * 注意这并没有放宽「什么会被发给服务器」——[SignCode.parse] 不通过就仍归入 [Unknown]，
  * 一个请求都不会发出去。
+ *
+ * ### 纯数字这一条的边界：它同时是「加入课程邀请码」的形态
+ *
+ * 补记于 2026-10-13（依据见 `docs/lecture-signin-research.md` §10.15）：
+ * 轻新课堂对**纯数字**二维码的处理在两个入口**并不一致** —— 首页扫码判为
+ * 「请提供有效的二维码！」，而「我的」页扫码判为**加入课程邀请码**，并提交
+ * `{method:"stuJoinCourse", userId, cId:<同一个数字>}`。也就是说，同一串数字
+ * 在学校那边有可能被解释成「课程编号」而不是「节次编号」。
+ *
+ * 实测 `cId` 现在是 5 位（注册表 `64241`、`57000+`、`6960–6962`），离 7 位尚远，
+ * 因此**当前不会碰撞**。但若将来 `cId` 涨到 7 位，[SignCode.parse] 就会把一个
+ * 「加入课程码」认成「节次编号」并发出一发注定被拒的签到请求。
+ * 到那时**不能**靠数字位数去区分（纯数字本身没有足够信息），只能回到
+ * 「是否含 [SIGN_PATH_IN_QR]」这个判据上。
  */
 sealed interface ScanPayload {
 
@@ -94,11 +108,32 @@ sealed interface ScanPayload {
                 ScanQuery.upsert(query, canonicalIdName, canonicalIdValue)
             }
 
-        /** 二维码没带 `timestamp` 时才需要调用方补（见 [withTimestamp]）。 */
-        val needsTimestamp: Boolean get() = ScanQuery.param(query, TIMESTAMP) == null
+        /**
+         * 二维码里是否带着一段可原样重放的 query。
+         *
+         * 空串只可能来自「整段原文就是一个裸编号」的班牌（见 [parse] 的兜底分支）——
+         * 那种码没有 query 可重放，请求只能由我们自己拼完整。
+         */
+        val isReplay: Boolean get() = query.isNotEmpty()
 
         /**
-         * 补上学校校时（仅当二维码没带 `timestamp` 时生效）。
+         * 是否需要调用方补一个学校校时。
+         *
+         * ## 为什么**只有**自己拼请求时才补（2026-10-13 修）
+         * 轻新课堂的扫码通道是**纯重放**：`requestPost(二维码query + "&id=" + uid, …)`，
+         * 它**从不新增 `timestamp`**。因此二维码里已经有 query 时照抄即可 ——
+         * 多塞一个 `timestamp` 是**本项目独有的**改动，而学校那句「签到码已失效」
+         * 既可能真是码轮换过期，也可能正是被这个多出来的值判掉的
+         * （真机实测见 `docs/lecture-signin-research.md` §10.16）。
+         * 在拿到反证之前，**不偏离唯一已知可用的客户端**。
+         *
+         * 反过来，整段原文只有一个裸编号时没有 query 可重放，请求必须由我们拼完整 ——
+         * 一个不含任何新鲜度证明的请求没有任何被接受的可能，所以这时才补时间戳。
+         */
+        val needsTimestamp: Boolean get() = !isReplay
+
+        /**
+         * 补上学校校时（只在 [needsTimestamp] 为真时生效，即请求由我们自己拼的那一种）。
          *
          * ## 为什么不无条件用校时**覆盖**二维码里的 timestamp
          * 那样会把「学校自己发出来的一个值」换成「我们本地推算出来的一个值」，
