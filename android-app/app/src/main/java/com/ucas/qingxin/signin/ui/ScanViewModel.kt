@@ -11,13 +11,18 @@ import com.ucas.qingxin.signin.logging.LogKind
 import com.ucas.qingxin.signin.network.ApiException
 import com.ucas.qingxin.signin.network.QingxinApiService
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+
+/** 连扫模式下一次尝试的简短结果（连扫时最有用的就是「刚才那几次成没成」）。 */
+data class ScanAttempt(val ok: Boolean, val summary: String)
 
 /**
  * 「扫码打卡」页面的界面状态。
@@ -59,14 +64,34 @@ data class ScanUiState(
     val submittedUrl: String = "",
     /** `timestamp` 的来源说明（二维码自带 / 本校校时补入）。 */
     val timestampNote: String = "",
+    /**
+     * 连扫模式。
+     *
+     * ## 为什么需要它
+     * 学校的班牌签到码**大约每 5 秒轮换一次**（[QingxinApiService.QR_REFRESH_CAP_MS]，
+     * 由原版反编译确认），而用户常常是在码刚过期的那一刻扫上的 —— 学校只会回
+     * 「请刷新后重试」。此时真正该做的动作是「什么都别动，继续对着班牌」，
+     * 而不是「看提示 → 点继续扫码 → 重新对焦」。连扫模式就是把后三步省掉：
+     * 出结果 → 短暂回显 → **自动重新开始取景**。
+     */
+    val continuous: Boolean = false,
+    /** 连扫模式下的瞬时回显（成功 / 失败 / 「同一张码，已跳过」都写这里）。 */
+    val flash: String = "",
+    /** [flash] 是成功还是失败（只影响配色）。 */
+    val flashOk: Boolean = false,
+    /** 连扫模式下的本次会话结果，新的在前。 */
+    val session: List<ScanAttempt> = emptyList(),
 ) {
     /**
      * 是否已有终态（成功或失败）。
      *
      * 界面据此**停掉取景**并换成结果卡片：继续对着同一张二维码取景没有意义，
      * 而且相机会一直吃电 —— 现场场景下用户可能盯着结果看很久。
+     *
+     * **连扫模式下恒为 false**：那时不许停取景，否则「自动重新开始」无从谈起。
+     * 连扫的结果走 [flash] 与 [session]，不占结果卡片。
      */
-    val finished: Boolean get() = success.isNotEmpty() || error.isNotEmpty()
+    val finished: Boolean get() = !continuous && (success.isNotEmpty() || error.isNotEmpty())
 }
 
 /**
@@ -97,22 +122,72 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
      * 在一次签到请求还没回来时又触发一次。用原子闸门保证：一旦进入提交或已有终态，
      * 后续帧一律丢弃。**不能**只靠相机库的「扫到一次就停」——
      * 那个开关管的是后续帧的分析，管不住已经在飞行中的回调。
+     *
+     * 连扫模式下这个闸门会被**主动打开**（见 [settle]）：那正是连扫的定义。
      */
     private val gate = AtomicBoolean(false)
+
+    /**
+     * 连扫模式的去重表：原文 → 上次提交时刻。
+     *
+     * ## 为什么去重是连扫模式的**必需**项，不是优化
+     * 连扫会在 ~2 秒后自动重新开始取景。若班牌此刻还没刷新，我们会立刻又解出**同一张码**、
+     * 又发一发同样的请求 —— 每 2 秒一次，一直打到班牌刷新或用户移开镜头。
+     * 学校的签到接口对重复提交并不友好，而且这纯属白烧请求额度。
+     *
+     * ## 窗口为什么取 3 秒
+     * 只比 [FLASH_MS] 略长、明确短于签到码的 5 秒轮换周期。取长了会误伤
+     * 「班牌就是给了一张静态码」的情况（讲座班牌疑似如此），那等于把功能关掉。
+     *
+     * 用 [ConcurrentHashMap]：相机回调的线程由扫码库决定，不该假设它在主线程。
+     */
+    private val submitted = ConcurrentHashMap<String, Long>()
 
     /**
      * 重新开始扫码。
      *
      * 同时清掉闸门：闸门是「本次取景」的状态，不是「本页面」的状态，
      * 否则用户点一次「重新扫码」之后相机就再也不响应了。
+     *
+     * **不清** [submitted]：去重窗口是按时长算的，跨过这一次重置仍然有效 ——
+     * 否则「失败 → 继续扫码 → 对着同一张码再扫」会绕过它，而那正是要挡的行为。
      */
     fun reset() {
         gate.set(false)
-        _ui.value = ScanUiState()
+        _ui.value = ScanUiState(continuous = _ui.value.continuous)
+    }
+
+    /**
+     * 切换连扫模式。
+     *
+     * 打开时若已经有一张结果卡片在屏上，就顺手回到取景 ——
+     * 用户点「连扫」的意图是「继续扫」，不是「留着这张卡片」。
+     */
+    fun setContinuous(on: Boolean) {
+        val wasFinished = _ui.value.finished
+        _ui.update {
+            if (on && wasFinished) {
+                ScanUiState(continuous = true)
+            } else {
+                it.copy(continuous = on, flash = if (on) it.flash else "", session = if (on) it.session else emptyList())
+            }
+        }
+        if (on) gate.set(false)
     }
 
     /** 相机解出一段文本（可能来自任意二维码，因此必须先分类再决定动作）。 */
     fun onDecoded(raw: String) {
+        // 连扫去重：同一张码在窗口内只提交一次（理由见 submitted）。
+        // 必须在取闸门**之前**做，且跳过时**不占闸门** —— 这一帧应当被当作没看见。
+        //
+        // 正在提交时不写提示：那一行此刻显示的是「正在提交签到…」，
+        // 用「已跳过」把它盖掉会让用户以为请求根本没发出去。
+        if (_ui.value.continuous && isDuplicate(raw)) {
+            if (!_ui.value.submitting) {
+                _ui.update { it.copy(flash = SKIP_NOTE, flashOk = false) }
+            }
+            return
+        }
         if (!gate.compareAndSet(false, true)) return
         if (!app.isReady) {
             fail("应用尚未初始化完成，请稍后重试")
@@ -153,7 +228,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                     "二维码自带时间戳" to (payload.qrTimestamp ?: "无"),
                     "动作" to "发请求",
                 )
-                viewModelScope.launch { submitDirect(payload) }
+                viewModelScope.launch { submitDirect(payload, raw) }
             }
 
             is ScanPayload.PlatformSign -> {
@@ -170,7 +245,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                     "判定" to "PlatformSign / 7.0 平台签到码",
                     "动作" to "发请求",
                 )
-                viewModelScope.launch { runSign(payload.path, payload.query) }
+                viewModelScope.launch { runSign(payload.path, payload.query, "", "7.0 平台签到码", raw) }
             }
         }
     }
@@ -181,8 +256,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
      * 只有二维码**没带** `timestamp` 时才去校时（见 [ScanPayload.DirectSign.withTimestamp]）：
      * 校时是一次额外的网络往返，二维码自己带了时间戳时它纯属白等。
      */
-    private suspend fun submitDirect(payload: ScanPayload.DirectSign) {
-        _ui.update { it.copy(submitting = true) }
+    private suspend fun submitDirect(payload: ScanPayload.DirectSign, raw: String) {
+        markSubmitting()
         val query = if (payload.needsTimestamp) {
             val schoolNowMs = try {
                 app.qrTimeline.syncClock().schoolNowMs
@@ -200,7 +275,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 timestampNote = timestampNoteFor(payload),
             )
         }
-        runSign(payload.path, query)
+        runSign(payload.path, query, payload.identifier, payload.label, raw)
     }
 
     /**
@@ -219,10 +294,22 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             "二维码只是一个裸编号，请求由本应用拼出，已用本校校时补入 timestamp"
     }
 
-    private suspend fun runSign(path: String, query: String) {
-        _ui.update { it.copy(submitting = true) }
+    private suspend fun runSign(
+        path: String,
+        query: String,
+        code: String,
+        kind: String,
+        raw: String,
+    ) {
+        markSubmitting()
         try {
-            val result = app.attendanceRepository.signScanTarget(path, query)
+            val result = app.attendanceRepository.signScanTarget(
+                path = path,
+                query = query,
+                code = code,
+                kind = kind,
+                raw = raw,
+            )
             app.signLog.append(
                 LogKind.OUTCOME,
                 "判定" to result.outcome.name,
@@ -231,29 +318,94 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 "提示" to result.message,
             )
             if (result.outcome == SignOutcome.SIGNED) {
-                _ui.update {
-                    it.copy(
-                        submitting = false,
-                        success = result.message.ifBlank { "签到成功" },
-                    )
-                }
+                settle(ok = true, text = result.message.ifBlank { "签到成功" })
             } else {
-                fail(explain(result))
+                settle(ok = false, text = explain(result))
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ApiException) {
             val loginExpired = e.code == "LOGIN_EXPIRED" || e.code == "LOGIN_REJECTED"
             app.signLog.append(LogKind.OUTCOME, "异常" to "${e.code}: ${e.message ?: ""}")
-            fail(if (loginExpired) "登录已过期，请返回首页重新登录" else e.message ?: e.code)
+            settle(
+                ok = false,
+                text = if (loginExpired) "登录已过期，请返回首页重新登录" else e.message ?: e.code,
+            )
         } catch (e: Exception) {
             app.signLog.append(LogKind.OUTCOME, "异常" to "${e::class.java.simpleName}: ${e.message ?: ""}")
-            fail(e.message ?: "签到失败")
+            settle(ok = false, text = e.message ?: "签到失败")
         }
     }
 
-    private fun fail(message: String) {
-        _ui.update { it.copy(submitting = false, success = "", error = message) }
+    /**
+     * 落定一次尝试。
+     *
+     * ## 两条路为什么必须分开
+     * 单发模式停在结果卡片上等用户读；连扫模式**不许停**，只能短暂回显再自动继续。
+     * 若两者共用同一组字段，连扫就得反复清掉 `success` / `error` 才能恢复取景 ——
+     * 那种「先写进去再擦掉」的状态很难保证不出中间态，而 [ScanUiState.finished]
+     * 一旦为真，取景就被拆掉了。
+     */
+    private fun settle(ok: Boolean, text: String) {
+        val attempt = ScanAttempt(ok = ok, summary = text.lineSequence().first().take(48))
+        _ui.update { s ->
+            if (s.continuous) {
+                s.copy(
+                    submitting = false,
+                    flash = text,
+                    flashOk = ok,
+                    session = (listOf(attempt) + s.session).take(MAX_SESSION),
+                )
+            } else {
+                s.copy(
+                    submitting = false,
+                    success = if (ok) text else "",
+                    error = if (ok) "" else text,
+                )
+            }
+        }
+        if (!_ui.value.continuous) return
+        viewModelScope.launch {
+            delay(FLASH_MS)
+            // 用户可能在这两秒里关掉了连扫：那就把结果补写进结果卡片，
+            // 否则这次尝试在界面上会凭空消失（用闭包里的 text，不读已被清掉的 flash）。
+            if (!_ui.value.continuous) {
+                _ui.update {
+                    it.copy(success = if (ok) text else "", error = if (ok) "" else text)
+                }
+                return@launch
+            }
+            // 放闸门并开始下一轮 —— 这就是「连扫」的全部动作。
+            _ui.update { it.copy(flash = "") }
+            gate.set(false)
+        }
+    }
+
+    private fun fail(message: String) = settle(ok = false, text = message)
+
+    /**
+     * 记下「已经在提交」。
+     *
+     * 连扫模式下**顺带**把这句话写进瞬时回显，因为那种模式不许出现全屏遮罩
+     * （见 [ScanScreen] 的 `SubmittingOverlay`）：每次请求都把取景画面糊掉一次，
+     * 在现场对着班牌连扫时是纯粹的干扰，而用户需要知道的只是「这次发出去了没有」。
+     */
+    private fun markSubmitting() {
+        _ui.update {
+            it.copy(
+                submitting = true,
+                flash = if (it.continuous) SUBMITTING_NOTE else it.flash,
+            )
+        }
+    }
+
+    /** 连扫去重：窗口内出现过的同一段原文算重复。 */
+    private fun isDuplicate(raw: String): Boolean {
+        val now = System.currentTimeMillis()
+        val previous = submitted[raw]
+        if (previous != null && now - previous < DEDUPE_MS) return true
+        submitted[raw] = now
+        return false
     }
 
     /**
@@ -298,4 +450,25 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         SignOutcome.OUTSIDE_SIGN_WINDOW -> "当前不在签到时间内"
         SignOutcome.SIGN_RESULT_UNKNOWN -> "签到结果未知，请回首页刷新课程状态后再确认"
     }
+
+    private companion object {
+        /** 连扫模式下每次结果在屏上停留多久；到点自动重新开始取景。 */
+        const val FLASH_MS = 2_200L
+
+        /** 连扫去重窗口：略长于 [FLASH_MS]，明显短于签到码 5 秒的轮换周期。 */
+        const val DEDUPE_MS = 3_000L
+
+        /** 连扫会话里最多留几条结果。 */
+        const val MAX_SESSION = 8
+
+        /** 同一张码被跳过时的提示。它本身是「没发请求」的证据，必须说出来。 */
+        const val SKIP_NOTE = "同一张码，本次跳过（等班牌刷新）"
+
+        /** 连扫模式下「正在提交」的瞬时回显（那种模式不出现全屏遮罩）。 */
+        const val SUBMITTING_NOTE = "正在提交签到…"
+    }
 }
+
+/** 扫码载荷里用于记账的标识：具名参数优先，退化到裸编号。 */
+private val ScanPayload.DirectSign.identifier: String
+    get() = signCode.courseSchedId.ifEmpty { signCode.timeTableId }

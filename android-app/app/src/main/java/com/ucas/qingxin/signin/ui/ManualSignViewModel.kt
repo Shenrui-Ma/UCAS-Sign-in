@@ -7,6 +7,7 @@ import com.ucas.qingxin.signin.QingxinApp
 import com.ucas.qingxin.signin.attendance.SignCode
 import com.ucas.qingxin.signin.data.Course
 import com.ucas.qingxin.signin.data.SignOutcome
+import com.ucas.qingxin.signin.history.SignSource
 import com.ucas.qingxin.signin.network.ApiException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,7 +108,7 @@ class ManualSignViewModel(app: Application) : AndroidViewModel(app) {
                 signed = false,
             )
             try {
-                val result = app.attendanceRepository.signOneClick(course)
+                val result = app.attendanceRepository.signOneClick(course, SignSource.MANUAL)
                 val ok = result.outcome == SignOutcome.SIGNED
                 _ui.update {
                     it.copy(

@@ -12,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +27,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -85,6 +87,7 @@ fun ScanScreen(
     state: ScanUiState,
     vm: ScanViewModel,
     onBack: () -> Unit,
+    onOpenManual: () -> Unit,
 ) {
     val context = LocalContext.current
     val activity = context as? ComponentActivity
@@ -122,6 +125,37 @@ fun ScanScreen(
             )
         }
 
+        // 连扫开关 + 手动录入出口。
+        //
+        // 放在取景区**上方**、标题行下方：两者都是「取景这条路走不通或不够用」时的
+        // 出口，而用户需要它们的时刻正是刚失败、目光还停在屏幕中上部的时候。
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilterChip(
+                selected = state.continuous,
+                onClick = { vm.setContinuous(!state.continuous) },
+                label = { Text("连扫", fontSize = 13.sp) },
+            )
+            Text(
+                if (state.continuous) {
+                    "失败或成功后自动重新取景；同一张码 3 秒内只提交一次"
+                } else {
+                    "班牌签到码约每 5 秒轮换，连扫可免去反复点「继续扫码」"
+                },
+                fontSize = 11.sp,
+                color = SCAN_TEXT_SUB,
+                lineHeight = 15.sp,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = onOpenManual,
+                contentPadding = PaddingValues(horizontal = 8.dp),
+            ) { Text("输入编号", fontSize = 13.sp) }
+        }
+
         Box(
             Modifier
                 .fillMaxWidth()
@@ -132,12 +166,13 @@ fun ScanScreen(
                 !granted -> CameraPermissionCard(
                     onRequest = { askCamera.launch(Manifest.permission.CAMERA) },
                     onBack = onBack,
+                    onOpenManual = onOpenManual,
                 )
 
                 state.finished -> ScanResultCard(state = state, onRescan = vm::reset, onBack = onBack)
 
                 activity == null -> Text(
-                    "当前环境无法启动相机，请回首页用「手动打卡」录入编号",
+                    "当前环境无法启动相机，请用「输入编号」或回首页「手动打卡」录入",
                     color = MaterialTheme.colorScheme.error,
                     fontSize = 13.sp,
                 )
@@ -145,9 +180,28 @@ fun ScanScreen(
                 else -> CameraScanner(onDecoded = vm::onDecoded, activity = activity)
             }
 
-            if (state.submitting) {
+            // 连扫模式不出现全屏遮罩：那里的「正在提交」写在底部那行瞬时回显里，
+            // 否则每次请求都会把取景画面糊掉一次（见 ScanViewModel.markSubmitting）。
+            if (state.submitting && !state.continuous) {
                 SubmittingOverlay()
             }
+
+            // 连扫模式的瞬时回显：压在取景区底部，不遮挡取景框。
+            // 它是这个模式下唯一的结果反馈 —— 结果卡片不许出现（那会拆掉取景）。
+            if (state.continuous && state.flash.isNotBlank()) {
+                ScanFlash(
+                    text = state.flash,
+                    ok = state.flashOk,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 12.dp),
+                )
+            }
+        }
+
+        // 连扫的会话结果：连扫时不看结果卡片，这些就是「刚才那几次成没成」的唯一依据。
+        if (state.continuous && state.session.isNotEmpty()) {
+            ScanSession(session = state.session)
         }
 
         if (!state.finished && state.recognized.isNotBlank()) {
@@ -172,6 +226,55 @@ fun ScanScreen(
                 fontSize = 12.sp,
                 color = SCAN_TEXT_SUB,
                 modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/**
+ * 连扫模式下的一条瞬时回显。
+ *
+ * 半透明深底 + 白字，而不是与结果卡片同一套浅色卡片：它在取景画面上，
+ * 必须是「浮在上面的一句话」而不是「盖住画面的一块板」。
+ */
+@Composable
+private fun ScanFlash(text: String, ok: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .fillMaxWidth(0.92f)
+            .background(
+                if (ok) Color(0xE60F6B4C) else Color(0xE6B42318),
+                RoundedCornerShape(12.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text,
+            color = Color.White,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            maxLines = 3,
+        )
+    }
+}
+
+/** 连扫的本次会话结果（新的在前，最多几条）。 */
+@Composable
+private fun ScanSession(session: List<ScanAttempt>) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(SCAN_WARN_BG, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text("本次连扫", fontSize = 11.sp, color = SCAN_TEXT_SUB)
+        session.forEach { attempt ->
+            Text(
+                (if (attempt.ok) "✓ " else "✗ ") + attempt.summary,
+                fontSize = 12.sp,
+                color = if (attempt.ok) SCAN_ACCENT else Color(0xFFB42318),
+                maxLines = 1,
             )
         }
     }
@@ -275,7 +378,11 @@ private fun SubmittingOverlay() {
 
 /** 相机权限未授予时的说明与出口。 */
 @Composable
-private fun CameraPermissionCard(onRequest: () -> Unit, onBack: () -> Unit) {
+private fun CameraPermissionCard(
+    onRequest: () -> Unit,
+    onBack: () -> Unit,
+    onOpenManual: () -> Unit,
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(16.dp),
@@ -298,10 +405,14 @@ private fun CameraPermissionCard(onRequest: () -> Unit, onBack: () -> Unit) {
             }
             Spacer(Modifier.height(2.dp))
             Text(
-                "也可以回首页用「手动打卡」，录入现场读到的 7 位编号。",
+                "也可以直接用「输入编号」录入现场读到的 7 位编号，不需要相机。",
                 fontSize = 12.sp,
                 color = SCAN_TEXT_SUB,
             )
+            TextButton(
+                onClick = onOpenManual,
+                contentPadding = PaddingValues(horizontal = 0.dp),
+            ) { Text("输入编号", fontSize = 13.sp) }
         }
     }
 }

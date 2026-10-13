@@ -107,7 +107,17 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
-private enum class AppScreen { Home, Schedule, Lecture, LectureSchedule, Manual, Scan, Settings, Logs }
+private enum class AppScreen {
+    Home,
+    Schedule,
+    Lecture,
+    LectureSchedule,
+    Manual,
+    Scan,
+    Settings,
+    Logs,
+    Records,
+}
 
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
@@ -187,6 +197,7 @@ class MainActivity : ComponentActivity() {
                                 vm = vm,
                                 onBack = { screen = AppScreen.Home },
                                 onOpenLogs = { screen = AppScreen.Logs },
+                                onOpenRecords = { screen = AppScreen.Records },
                             )
                             screen == AppScreen.Logs -> {
                                 // 日志器挂在 Application 上：API 层（唯一能看到学校响应正文的
@@ -194,6 +205,15 @@ class MainActivity : ComponentActivity() {
                                 val app = LocalContext.current.applicationContext as QingxinApp
                                 LogScreen(
                                     log = app.signLog,
+                                    onBack = { screen = AppScreen.Settings },
+                                )
+                            }
+                            screen == AppScreen.Records -> {
+                                // 与日志同理：签到记录也是挂在 Application 上的同一份 ——
+                                // 写入方是 AttendanceRepository（全部签到路径的唯一收口）。
+                                val app = LocalContext.current.applicationContext as QingxinApp
+                                RecordScreen(
+                                    store = app.signRecords,
                                     onBack = { screen = AppScreen.Settings },
                                 )
                             }
@@ -218,6 +238,7 @@ class MainActivity : ComponentActivity() {
                                 state = scanState,
                                 vm = scanVm,
                                 onBack = { screen = AppScreen.Home },
+                                onOpenManual = { screen = AppScreen.Manual },
                             )
                             screen == AppScreen.Schedule -> ScheduleScreen(
                                 state = scheduleState,
@@ -1103,6 +1124,41 @@ private fun openReleasePage(context: Context, release: UpdateRelease) {
 
 @Composable
 /**
+ * 「签到记录」入口。
+ *
+ * ## 为什么排在「签到日志」**之前**
+ * 两者都在设置里，但这一张回答的是用户**自己**的问题（「我签上了没有」），
+ * 而日志回答的是维护者的问题（「为什么没签上」）。日常要翻的是前者，
+ * 因此它必须更靠前 —— 用户翻设置时先看到的那张，就是他以为的默认入口。
+ *
+ * ## 为什么说明里要点出「讲座」
+ * 讲座不在课表里、学校系统也查不到「我签过哪些讲座」（见
+ * `docs/lecture-signin-research.md` §10.18），所以这份记录是回看讲座签到的
+ * 唯一途径。这件事不写出来，用户不会知道该来这儿找。
+ */
+private fun SignRecordCard(onOpen: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("签到记录", fontWeight = FontWeight.Bold)
+            Text(
+                "每次签到成功或失败都会留一条：时间、来源、提交的编号、学校的结果。" +
+                    "讲座不在课表里、学校系统也查不到，这份本机记录是回看「我签了哪些讲座」的唯一途径。",
+                fontSize = 12.sp,
+                color = Color(0xFF5B6B63),
+                lineHeight = 18.sp,
+            )
+            TextButton(onClick = onOpen, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                Text("查看 / 分享记录")
+            }
+        }
+    }
+}
+
+@Composable
+/**
  * 「签到日志」入口。
  *
  * 刻意放在「保活」之后、「版本与更新」之前：它不是日常要用的功能，
@@ -1136,6 +1192,7 @@ private fun SettingsScreen(
     vm: MainViewModel,
     onBack: () -> Unit,
     onOpenLogs: () -> Unit,
+    onOpenRecords: () -> Unit,
 ) {
     val activity = LocalContext.current as? ComponentActivity
     // 每次回到前台都重新核对保活状态，并借机重试一次守护服务（冷启动时可能被系统拒绝）。
@@ -1188,6 +1245,7 @@ private fun SettingsScreen(
         item { AutoSignCard(state, vm) }
         item { AutoSignExcludeCard(state, vm) }
         item { KeepAliveCard(state, vm) }
+        item { SignRecordCard(onOpenRecords) }
         item { SignLogCard(onOpenLogs) }
         item { UpdateCard(state, vm) }
         item {
