@@ -1,0 +1,15 @@
+--------- beginning of main
+10-14 21:34:15.662  3843  3858 I DaemonProof: 315214 scenario=cooldown_restart revision=patched-4593162 sdk=35
+10-14 21:34:15.688  3843  3858 I DaemonProof: 315240 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986655000 daemonEnabled=true batteryExempt=true
+10-14 21:34:15.720  3843  3864 I DaemonProof: ACTUAL_HTTP attempt=1 GET https://api.example.invalid/course/stu_scan_sign.action?courseSchedId=7654321&timestamp=1791984855716&id=fixture-user
+10-14 21:34:16.293  3843  3858 I DaemonProof: 315845 cooldown begins failureAtMs=315772; first request failed; serviceRunning=true
+10-14 21:34:21.441  3843  3858 I DaemonProof: 320993 cooldown restart batch=1 elapsedSinceFailureMs=5220 externalStarts=3 requests=1 serviceRunning=true
+10-14 21:34:31.377  3843  3858 I DaemonProof: 330930 cooldown restart batch=2 elapsedSinceFailureMs=15157 externalStarts=6 requests=1 serviceRunning=true
+10-14 21:34:51.475  3843  3858 I DaemonProof: 351027 cooldown restart batch=3 elapsedSinceFailureMs=35255 externalStarts=9 requests=1 serviceRunning=true
+10-14 21:35:11.479  3843  3858 I DaemonProof: 371031 cooldown restart batch=4 elapsedSinceFailureMs=55258 externalStarts=12 requests=1 serviceRunning=true
+10-14 21:35:16.315  3843  3858 I DaemonProof: 375867 minimum cooldown observed: no second submit before60000ms; externalStarts=12 requests=1
+10-14 21:35:35.184  3843  3864 I DaemonProof: ACTUAL_HTTP attempt=2 GET https://api.example.invalid/course/stu_scan_sign.action?courseSchedId=7654321&timestamp=1791984935183&id=fixture-user
+10-14 21:35:35.271  3843  3858 I DaemonProof: 394823 cooldown retryAfterFailureMs=78964 requestGapMs=79464 actualSignRequests=2 externalStarts=12
+10-14 21:35:35.274  3843  3858 I DaemonProof: 394826 cooldown final serviceRunning=false daemonNotification=false successNotifications=1 actualSignRequests=2
+10-14 21:35:35.275  3843  3858 I DaemonProof: 394827 production sign history records=2 successRecords=1 source=AUTO
+10-14 21:35:35.275  3843  3858 I DaemonProof: 394827 PASS cooldown_restart

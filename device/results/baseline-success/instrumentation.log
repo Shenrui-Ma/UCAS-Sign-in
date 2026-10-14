@@ -1,0 +1,6 @@
+INSTRUMENTATION_RESULT: stream=103324 scenario=success revision=baseline-4593162 sdk=35
+103346 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986443000 daemonEnabled=true batteryExempt=true
+103452 first-attempt success control: one real sign request, one success notification, service stopped; daemonNotification=true
+103453 production sign history records=1 successRecords=1 source=AUTO
+103453 PASS success
+INSTRUMENTATION_CODE: -1

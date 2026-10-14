@@ -1,0 +1,5 @@
+--------- beginning of main
+10-14 21:37:10.444  4412  4426 I DaemonProof: 489996 scenario=saver revision=patched-4593162 sdk=35
+10-14 21:37:10.470  4412  4426 I DaemonProof: 490022 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986830000 daemonEnabled=true batteryExempt=true
+10-14 21:37:12.478  4412  4426 I DaemonProof: 492030 power saver: daemon disabled, service stopped, no sign request
+10-14 21:37:12.478  4412  4426 I DaemonProof: 492030 PASS saver

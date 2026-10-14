@@ -1,0 +1,7 @@
+--------- beginning of main
+10-14 21:34:06.237  3556  3575 I DaemonProof: 305789 scenario=restart revision=patched-4593162 sdk=35
+10-14 21:34:06.253  3556  3575 I DaemonProof: 305806 fixture onlyCourse=7654321 targetOffsetMs=180000 deadlineMs=1791986646000 daemonEnabled=true batteryExempt=true
+10-14 21:34:07.357  3556  3575 I DaemonProof: 306910 before repeated start serviceRunning=true foreground=true signRequests=0
+10-14 21:34:10.866  3556  3575 I DaemonProof: 310418 after repeated start serviceRunning=true foreground=true signRequests=0
+10-14 21:34:10.971  3556  3575 I DaemonProof: 310523 disabled auto sign stops service and notification
+10-14 21:34:10.971  3556  3575 I DaemonProof: 310523 PASS restart

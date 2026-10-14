@@ -1,0 +1,12 @@
+INSTRUMENTATION_RESULT: stream=222007 scenario=receiver revision=patched-4593162 sdk=35
+222028 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986562000 daemonEnabled=true batteryExempt=true
+222029 shouldRunDaemon=true
+222030 real explicit AutoSignAlarmReceiver broadcast sent
+222131 after initial wake signRequests=1 serviceRunning=true daemonNotification=true
+222133 pending notification text=正在准备自动签到…
+242135 after receiver watchdog serviceRunning=true signRequests=1
+304348 retryGapMs=82237 actualSignRequests=2
+304349 final serviceRunning=false daemonNotification=false notifications=[5512:自动签到成功]
+304351 production sign history records=2 successRecords=1 source=AUTO
+304351 PASS receiver
+INSTRUMENTATION_CODE: -1

@@ -1,0 +1,88 @@
+{
+  "base_revision": "4593162ee1bd2e42f2a8f5b9c49ea9df8312d777",
+  "external_optional_instrumentation": true,
+  "integrated_into_repository_tests_or_ci": false,
+  "patched_scenarios_passed": 9,
+  "baseline_control_passes": 1,
+  "baseline_expected_regression_failures": 2,
+  "baseline_no_retry_observation_ms": 96001,
+  "patched_receiver_request_gap_ms": 82237,
+  "patched_cooldown_retry_after_failure_ms": 78964,
+  "patched_cooldown_request_gap_ms": 79464,
+  "cooldown_external_start_requests": 12,
+  "no_second_submit_before_ms": 60000,
+  "scenario_results": [
+    {
+      "revision": "baseline",
+      "scenario": "success",
+      "outcome": "pass",
+      "evidence": "results/baseline-success/result.json"
+    },
+    {
+      "revision": "baseline",
+      "scenario": "restart",
+      "outcome": "expected_regression_failure",
+      "evidence": "results/baseline-restart/result.json"
+    },
+    {
+      "revision": "baseline",
+      "scenario": "baseline_observe",
+      "outcome": "expected_regression_failure",
+      "evidence": "results/baseline-baseline_observe/result.json"
+    },
+    {
+      "revision": "patched",
+      "scenario": "success",
+      "outcome": "pass",
+      "evidence": "results/patched-success/result.json"
+    },
+    {
+      "revision": "patched",
+      "scenario": "receiver",
+      "outcome": "pass",
+      "evidence": "results/patched-receiver/result.json"
+    },
+    {
+      "revision": "patched",
+      "scenario": "restart",
+      "outcome": "pass",
+      "evidence": "results/patched-restart/result.json"
+    },
+    {
+      "revision": "patched",
+      "scenario": "earlier",
+      "outcome": "pass",
+      "evidence": "results/patched-earlier/result.json"
+    },
+    {
+      "revision": "patched",
+      "scenario": "cooldown_restart",
+      "outcome": "pass",
+      "evidence": "results/patched-cooldown_restart/result.json"
+    },
+    {
+      "revision": "patched",
+      "scenario": "budget",
+      "outcome": "pass",
+      "evidence": "results/patched-budget/result.json"
+    },
+    {
+      "revision": "patched",
+      "scenario": "deadline",
+      "outcome": "pass",
+      "evidence": "results/patched-deadline/result.json"
+    },
+    {
+      "revision": "patched",
+      "scenario": "idle",
+      "outcome": "pass",
+      "evidence": "results/patched-idle/result.json"
+    },
+    {
+      "revision": "patched",
+      "scenario": "saver",
+      "outcome": "pass",
+      "evidence": "results/patched-saver/result.json"
+    }
+  ]
+}

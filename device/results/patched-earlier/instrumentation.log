@@ -1,0 +1,6 @@
+INSTRUMENTATION_RESULT: stream=312576 scenario=earlier revision=patched-4593162 sdk=35
+312598 fixture onlyCourse=7654321 targetOffsetMs=180000 deadlineMs=1791986653000 daemonEnabled=true batteryExempt=true
+313606 restored excluded earlier course while service sleeps for later course
+313706 earlier course signed promptly, later course unsigned, service remains for later target
+313710 PASS earlier
+INSTRUMENTATION_CODE: -1

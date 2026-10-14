@@ -1,0 +1,7 @@
+--------- beginning of main
+10-14 21:34:13.024  3702  3716 I DaemonProof: 312576 scenario=earlier revision=patched-4593162 sdk=35
+10-14 21:34:13.046  3702  3716 I DaemonProof: 312598 fixture onlyCourse=7654321 targetOffsetMs=180000 deadlineMs=1791986653000 daemonEnabled=true batteryExempt=true
+10-14 21:34:14.053  3702  3716 I DaemonProof: 313606 restored excluded earlier course while service sleeps for later course
+10-14 21:34:14.062  3702  3721 I DaemonProof: ACTUAL_HTTP attempt=1 GET https://api.example.invalid/course/stu_scan_sign.action?courseSchedId=7654322&timestamp=1791984854060&id=fixture-user
+10-14 21:34:14.154  3702  3716 I DaemonProof: 313706 earlier course signed promptly, later course unsigned, service remains for later target
+10-14 21:34:14.158  3702  3716 I DaemonProof: 313710 PASS earlier

@@ -1,0 +1,5 @@
+INSTRUMENTATION_RESULT: stream=396238 scenario=budget revision=patched-4593162 sdk=35
+396262 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986736000 daemonEnabled=true batteryExempt=true
+396374 seeded production attempts=8; actual engine emits terminal failure, zero additional sign requests, service stopped
+396374 PASS budget
+INSTRUMENTATION_CODE: -1

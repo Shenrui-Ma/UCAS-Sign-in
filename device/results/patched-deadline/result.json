@@ -1,0 +1,15 @@
+{
+  "scenario": "deadline",
+  "revision": "patched-4593162",
+  "avd": "UCAS_DAEMON_PROOF",
+  "device_fingerprint": "google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+  "app_apk_sha256": "c301c50c25f8b132f69ec78a86f8fafb0b7ac4651942ac4c4ea811145a8a0230",
+  "test_apk_sha256": "c4baaa5e3a27e85b95df5f115096c10349993e03143f51706d1143a7cd902b9b",
+  "passed": true,
+  "adb_exit_code": 0,
+  "outcome": "pass",
+  "transcript_sha256": {
+    "instrumentation.log": "06e036f46c4934f262537b8e9f142d8642717bdc85053f594b225527e5f4a7d0",
+    "logcat.log": "4dc26cf7decd00a6b59d5effd67110efa6e451bf9309fe3902667c6b5bebc9f2"
+  }
+}

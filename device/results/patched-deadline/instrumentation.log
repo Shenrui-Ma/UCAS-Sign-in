@@ -1,0 +1,6 @@
+INSTRUMENTATION_RESULT: stream=397770 scenario=deadline revision=patched-4593162 sdk=35
+397788 fixture onlyCourse=7654321 targetOffsetMs=-1500000 deadlineMs=1791984958000 daemonEnabled=true batteryExempt=true
+397895 deadline fixture first failure; real deadline expires about 20 s after preparation
+485043 deadline cutoff: one failed request, no late submission, service and foreground notification stopped
+485043 PASS deadline
+INSTRUMENTATION_CODE: -1

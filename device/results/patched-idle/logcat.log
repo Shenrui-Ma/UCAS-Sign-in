@@ -1,0 +1,5 @@
+--------- beginning of main
+10-14 21:37:06.955  4300  4320 I DaemonProof: 486507 scenario=idle revision=patched-4593162 sdk=35
+10-14 21:37:06.977  4300  4320 I DaemonProof: 486529 fixture onlyCourse=7654321 targetOffsetMs=3600000 deadlineMs=1791986826000 daemonEnabled=true batteryExempt=true
+10-14 21:37:08.983  4300  4320 I DaemonProof: 488535 no courses: service stopped, no notification, no sign request
+10-14 21:37:08.983  4300  4320 I DaemonProof: 488535 PASS idle

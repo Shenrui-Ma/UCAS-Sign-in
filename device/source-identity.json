@@ -1,0 +1,18 @@
+{
+  "base_revision": "4593162ee1bd2e42f2a8f5b9c49ea9df8312d777",
+  "head_at_build": "4593162ee1bd2e42f2a8f5b9c49ea9df8312d777",
+  "source_files": {
+    "android-app/app/src/main/java/com/ucas/qingxin/signin/attendance/AttendanceDaemonService.kt": "130a616e41440033722e34a585a71aafb265b9886598de6fadd2753130db1797",
+    "android-app/app/src/main/java/com/ucas/qingxin/signin/attendance/AutoSignEngine.kt": "db85330b00395809919095e5c5b0047c17650b2b4c2d24cba9840e3614a8c02c",
+    "android-app/app/src/main/java/com/ucas/qingxin/signin/attendance/AttendanceRepository.kt": "b6efee2e56f6cf48ad7210c0897a6eb0e728da0782ce52c7b6ee05838f295607",
+    "android-app/app/src/main/java/com/ucas/qingxin/signin/QingxinApp.kt": "28e5291444026fffa27a896609a896dfba6b005db1c272ed33443770f16db7e7"
+  },
+  "apk_sha256": {
+    "baseline-app-debug.apk": "acdf9ea03ffa2928fdbb0b79092a01e9178f9bf90f250dffc6309d9003310781",
+    "daemon-harness-v4.apk": "c4baaa5e3a27e85b95df5f115096c10349993e03143f51706d1143a7cd902b9b",
+    "patched-app-debug.apk": "c301c50c25f8b132f69ec78a86f8fafb0b7ac4651942ac4c4ea811145a8a0230"
+  },
+  "harness_source_sha256": "405306b6586fad49e9dd18d7cdce2c577e295359f04191f190725557b37f7b11",
+  "tested_content_commit": "f42ece84b9347bc825c8a8a1aecb73c9142c961c",
+  "commit_source_hashes_verified": true
+}

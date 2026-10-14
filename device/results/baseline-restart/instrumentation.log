@@ -1,0 +1,11 @@
+INSTRUMENTATION_RESULT: stream=104952 scenario=restart revision=baseline-4593162 sdk=35
+104981 fixture onlyCourse=7654321 targetOffsetMs=180000 deadlineMs=1791986445000 daemonEnabled=true batteryExempt=true
+116058 before repeated start serviceRunning=true foreground=true signRequests=0
+119572 after repeated start serviceRunning=false foreground=false signRequests=0
+119574 FAIL IllegalStateException: Repeated START cancelled old loop and stopped replacement service
+java.lang.IllegalStateException: Repeated START cancelled old loop and stopped replacement service
+	at com.ucas.qingxin.signin.attendance.DaemonProofInstrumentation.restartScenario(DaemonProofInstrumentation.kt:174)
+	at com.ucas.qingxin.signin.attendance.DaemonProofInstrumentation.onStart(DaemonProofInstrumentation.kt:61)
+	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2594)
+
+INSTRUMENTATION_CODE: 0

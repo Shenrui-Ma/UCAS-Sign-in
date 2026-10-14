@@ -1,0 +1,185 @@
+{
+  "base_revision": "4593162ee1bd2e42f2a8f5b9c49ea9df8312d777",
+  "source_changes": {
+    "app/src/main/java/com/ucas/qingxin/signin/attendance/AttendanceDaemonService.kt": "modified",
+    "app/src/main/java/com/ucas/qingxin/signin/attendance/AutoSignEngine.kt": "modified",
+    "app/src/test/java/com/ucas/qingxin/signin/AutoSignDaemonPolicyTest.kt": "added"
+  },
+  "tests": {
+    "jdk17": {
+      "debug": {
+        "base": {
+          "totals": {
+            "tests": 320,
+            "failures": 1,
+            "errors": 0,
+            "skipped": 0
+          },
+          "failures": [
+            {
+              "test": "com.ucas.qingxin.signin.LectureTableParserTest.各种时间分隔符都能解析",
+              "message": "org.junit.ComparisonFailure: 分隔符 至 的开始 expected:<[15:30]> but was:<[]>"
+            }
+          ]
+        },
+        "patched": {
+          "totals": {
+            "tests": 326,
+            "failures": 1,
+            "errors": 0,
+            "skipped": 0
+          },
+          "failures": [
+            {
+              "test": "com.ucas.qingxin.signin.LectureTableParserTest.各种时间分隔符都能解析",
+              "message": "org.junit.ComparisonFailure: 分隔符 至 的开始 expected:<[15:30]> but was:<[]>"
+            }
+          ]
+        },
+        "same_failure_signatures": true,
+        "added_tests": 6
+      },
+      "release": {
+        "base": {
+          "totals": {
+            "tests": 320,
+            "failures": 1,
+            "errors": 0,
+            "skipped": 0
+          },
+          "failures": [
+            {
+              "test": "com.ucas.qingxin.signin.LectureTableParserTest.各种时间分隔符都能解析",
+              "message": "org.junit.ComparisonFailure: 分隔符 至 的开始 expected:<[15:30]> but was:<[]>"
+            }
+          ]
+        },
+        "patched": {
+          "totals": {
+            "tests": 326,
+            "failures": 1,
+            "errors": 0,
+            "skipped": 0
+          },
+          "failures": [
+            {
+              "test": "com.ucas.qingxin.signin.LectureTableParserTest.各种时间分隔符都能解析",
+              "message": "org.junit.ComparisonFailure: 分隔符 至 的开始 expected:<[15:30]> but was:<[]>"
+            }
+          ]
+        },
+        "same_failure_signatures": true,
+        "added_tests": 6
+      }
+    },
+    "jre21": {
+      "debug": {
+        "base": {
+          "totals": {
+            "tests": 320,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "failures": []
+        },
+        "patched": {
+          "totals": {
+            "tests": 326,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "failures": []
+        },
+        "same_failure_signatures": true,
+        "added_tests": 6
+      },
+      "release": {
+        "base": {
+          "totals": {
+            "tests": 320,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "failures": []
+        },
+        "patched": {
+          "totals": {
+            "tests": 326,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "failures": []
+        },
+        "same_failure_signatures": true,
+        "added_tests": 6
+      }
+    }
+  },
+  "lint": {
+    "debug": {
+      "base_count": 27,
+      "patched_count": 27,
+      "same_signatures_ignoring_line_shift": true,
+      "exactly_equal": false
+    },
+    "release": {
+      "base_count": 27,
+      "patched_count": 27,
+      "same_signatures_ignoring_line_shift": true,
+      "exactly_equal": false
+    }
+  },
+  "diagnostics": {
+    "base": {
+      "compiler": [],
+      "tooling": [
+        "Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libdatastore_shared_counter.so, libimage_processing_util_jni.so, libsurface_util_jni.so.",
+        "Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times."
+      ],
+      "successful_task_markers": [
+        "> Task :app:assembleDebug",
+        "> Task :app:minifyReleaseWithR8",
+        "> Task :app:lintDebug",
+        "> Task :app:lintRelease",
+        "> Task :app:assembleRelease"
+      ]
+    },
+    "patched": {
+      "compiler": [],
+      "tooling": [
+        "Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libdatastore_shared_counter.so, libimage_processing_util_jni.so, libsurface_util_jni.so.",
+        "Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times."
+      ],
+      "successful_task_markers": [
+        "> Task :app:assembleDebug UP-TO-DATE",
+        "> Task :app:lintDebug",
+        "> Task :app:lintRelease",
+        "> Task :app:minifyReleaseWithR8",
+        "> Task :app:assembleRelease"
+      ]
+    },
+    "same_tooling_warnings": true
+  },
+  "source_unchanged_during_verification": true,
+  "git_diff_check": 0,
+  "release_snapshot": {
+    "sha256": "026062912e984810e53e96cdbc886fd3a593faf7d625c0b6e7ba077b12bfa776",
+    "tags": [
+      "v1.3.5",
+      "v1.3.3",
+      "v1.3.1",
+      "v1.2.2",
+      "v1.2.1",
+      "v1.2.0",
+      "v1.1.13alpha",
+      "v1.1.10",
+      "v1.1.8",
+      "qingxin",
+      "android"
+    ]
+  }
+}

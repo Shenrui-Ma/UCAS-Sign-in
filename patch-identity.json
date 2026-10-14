@@ -1,0 +1,10 @@
+{
+  "base_revision": "4593162ee1bd2e42f2a8f5b9c49ea9df8312d777",
+  "patched_revision": "f42ece84b9347bc825c8a8a1aecb73c9142c961c",
+  "source_sha256": {
+    "android-app/app/src/main/java/com/ucas/qingxin/signin/attendance/AttendanceDaemonService.kt": "130a616e41440033722e34a585a71aafb265b9886598de6fadd2753130db1797",
+    "android-app/app/src/main/java/com/ucas/qingxin/signin/attendance/AutoSignEngine.kt": "db85330b00395809919095e5c5b0047c17650b2b4c2d24cba9840e3614a8c02c",
+    "android-app/app/src/test/java/com/ucas/qingxin/signin/AutoSignDaemonPolicyTest.kt": "0c749db77f7318b2ad0fd516d23162346349a923418d018223ff4cc5dc6f7362"
+  },
+  "note": "APKs were built and tested before the local commit; file content hashes identify the same final source."
+}

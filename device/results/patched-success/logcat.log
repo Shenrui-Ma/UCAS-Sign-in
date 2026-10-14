@@ -1,0 +1,7 @@
+--------- beginning of main
+10-14 21:32:40.764  3272  3291 I DaemonProof: 220316 scenario=success revision=patched-4593162 sdk=35
+10-14 21:32:40.792  3272  3291 I DaemonProof: 220344 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986560000 daemonEnabled=true batteryExempt=true
+10-14 21:32:40.806  3272  3297 I DaemonProof: ACTUAL_HTTP attempt=1 GET https://api.example.invalid/course/stu_scan_sign.action?courseSchedId=7654321&timestamp=1791984760802&id=fixture-user
+10-14 21:32:40.899  3272  3291 I DaemonProof: 220451 first-attempt success control: one real sign request, one success notification, service stopped; daemonNotification=true
+10-14 21:32:40.901  3272  3291 I DaemonProof: 220453 production sign history records=1 successRecords=1 source=AUTO
+10-14 21:32:40.901  3272  3291 I DaemonProof: 220453 PASS success

@@ -1,0 +1,11 @@
+// Example: gradle -I harness.init.gradle -PdaemonProofSourceRoot=/path/to/src :app:assembleDebugAndroidTest
+gradle.afterProject { p, state ->
+    if (p.path == ':app' && p.plugins.hasPlugin('com.android.application')) {
+        def sourceRoot = p.findProperty('daemonProofSourceRoot')
+        if (!sourceRoot || !new File(sourceRoot.toString()).isDirectory()) {
+            throw new GradleException('Pass -PdaemonProofSourceRoot=<absolute directory containing harness source>')
+        }
+        p.android.defaultConfig.testInstrumentationRunner = 'com.ucas.qingxin.signin.attendance.DaemonProofInstrumentation'
+        p.android.sourceSets.androidTest.java.srcDir(sourceRoot.toString())
+    }
+}

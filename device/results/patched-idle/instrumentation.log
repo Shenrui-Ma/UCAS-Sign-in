@@ -1,0 +1,5 @@
+INSTRUMENTATION_RESULT: stream=486507 scenario=idle revision=patched-4593162 sdk=35
+486529 fixture onlyCourse=7654321 targetOffsetMs=3600000 deadlineMs=1791986826000 daemonEnabled=true batteryExempt=true
+488535 no courses: service stopped, no notification, no sign request
+488535 PASS idle
+INSTRUMENTATION_CODE: -1

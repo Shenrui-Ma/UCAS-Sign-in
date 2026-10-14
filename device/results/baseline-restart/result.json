@@ -1,0 +1,15 @@
+{
+  "scenario": "restart",
+  "revision": "baseline-4593162",
+  "avd": "UCAS_DAEMON_PROOF",
+  "device_fingerprint": "google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+  "app_apk_sha256": "acdf9ea03ffa2928fdbb0b79092a01e9178f9bf90f250dffc6309d9003310781",
+  "test_apk_sha256": "c4baaa5e3a27e85b95df5f115096c10349993e03143f51706d1143a7cd902b9b",
+  "passed": false,
+  "adb_exit_code": 0,
+  "outcome": "expected_regression_failure",
+  "transcript_sha256": {
+    "instrumentation.log": "ab49ee37be0ec7a552b615235063ab9ec2b3d371ed2009cd512f4aa2af92affb",
+    "logcat.log": "73c61b1b9eb33768bec11883ad2a11962360b1dda5b685578fa10cc6a1be2149"
+  }
+}

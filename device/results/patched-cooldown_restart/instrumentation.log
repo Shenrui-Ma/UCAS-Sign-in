@@ -1,0 +1,13 @@
+INSTRUMENTATION_RESULT: stream=315214 scenario=cooldown_restart revision=patched-4593162 sdk=35
+315240 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986655000 daemonEnabled=true batteryExempt=true
+315845 cooldown begins failureAtMs=315772; first request failed; serviceRunning=true
+320993 cooldown restart batch=1 elapsedSinceFailureMs=5220 externalStarts=3 requests=1 serviceRunning=true
+330930 cooldown restart batch=2 elapsedSinceFailureMs=15157 externalStarts=6 requests=1 serviceRunning=true
+351027 cooldown restart batch=3 elapsedSinceFailureMs=35255 externalStarts=9 requests=1 serviceRunning=true
+371031 cooldown restart batch=4 elapsedSinceFailureMs=55258 externalStarts=12 requests=1 serviceRunning=true
+375867 minimum cooldown observed: no second submit before60000ms; externalStarts=12 requests=1
+394823 cooldown retryAfterFailureMs=78964 requestGapMs=79464 actualSignRequests=2 externalStarts=12
+394826 cooldown final serviceRunning=false daemonNotification=false successNotifications=1 actualSignRequests=2
+394827 production sign history records=2 successRecords=1 source=AUTO
+394827 PASS cooldown_restart
+INSTRUMENTATION_CODE: -1

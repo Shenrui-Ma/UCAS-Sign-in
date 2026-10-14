@@ -1,0 +1,12 @@
+INSTRUMENTATION_RESULT: stream=122718 scenario=baseline_observe revision=baseline-4593162 sdk=35
+122808 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986463000 daemonEnabled=true batteryExempt=true
+122828 baseline long observation shouldRunDaemon=false
+142815 baseline after20s requests=1 serviceRunning=false daemonNotification=false
+218812 baseline after96001ms requests=1 serviceRunning=false daemonNotification=false courseSigned=false
+218812 FAIL IllegalStateException: Regression reproduced: expected retry after transient failure, observed only 1 request across 96 s
+java.lang.IllegalStateException: Regression reproduced: expected retry after transient failure, observed only 1 request across 96 s
+	at com.ucas.qingxin.signin.attendance.DaemonProofInstrumentation.baselineObservation(DaemonProofInstrumentation.kt:319)
+	at com.ucas.qingxin.signin.attendance.DaemonProofInstrumentation.onStart(DaemonProofInstrumentation.kt:68)
+	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2594)
+
+INSTRUMENTATION_CODE: 0

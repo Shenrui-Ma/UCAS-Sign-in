@@ -1,0 +1,5 @@
+INSTRUMENTATION_RESULT: stream=489996 scenario=saver revision=patched-4593162 sdk=35
+490022 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986830000 daemonEnabled=true batteryExempt=true
+492030 power saver: daemon disabled, service stopped, no sign request
+492030 PASS saver
+INSTRUMENTATION_CODE: -1

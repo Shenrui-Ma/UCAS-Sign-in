@@ -1,0 +1,7 @@
+INSTRUMENTATION_RESULT: stream=305789 scenario=restart revision=patched-4593162 sdk=35
+305806 fixture onlyCourse=7654321 targetOffsetMs=180000 deadlineMs=1791986646000 daemonEnabled=true batteryExempt=true
+306910 before repeated start serviceRunning=true foreground=true signRequests=0
+310418 after repeated start serviceRunning=true foreground=true signRequests=0
+310523 disabled auto sign stops service and notification
+310523 PASS restart
+INSTRUMENTATION_CODE: -1

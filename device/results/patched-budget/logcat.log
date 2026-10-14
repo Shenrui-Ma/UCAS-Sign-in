@@ -1,0 +1,5 @@
+--------- beginning of main
+10-14 21:35:36.686  4021  4042 I DaemonProof: 396238 scenario=budget revision=patched-4593162 sdk=35
+10-14 21:35:36.710  4021  4042 I DaemonProof: 396262 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986736000 daemonEnabled=true batteryExempt=true
+10-14 21:35:36.822  4021  4042 I DaemonProof: 396374 seeded production attempts=8; actual engine emits terminal failure, zero additional sign requests, service stopped
+10-14 21:35:36.822  4021  4042 I DaemonProof: 396374 PASS budget

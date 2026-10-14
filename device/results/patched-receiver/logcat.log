@@ -1,0 +1,14 @@
+--------- beginning of main
+10-14 21:32:42.455  3388  3404 I DaemonProof: 222007 scenario=receiver revision=patched-4593162 sdk=35
+10-14 21:32:42.476  3388  3404 I DaemonProof: 222028 fixture onlyCourse=7654321 targetOffsetMs=-1000 deadlineMs=1791986562000 daemonEnabled=true batteryExempt=true
+10-14 21:32:42.477  3388  3404 I DaemonProof: 222029 shouldRunDaemon=true
+10-14 21:32:42.478  3388  3404 I DaemonProof: 222030 real explicit AutoSignAlarmReceiver broadcast sent
+10-14 21:32:42.487  3388  3409 I DaemonProof: ACTUAL_HTTP attempt=1 GET https://api.example.invalid/course/stu_scan_sign.action?courseSchedId=7654321&timestamp=1791984762486&id=fixture-user
+10-14 21:32:42.579  3388  3404 I DaemonProof: 222131 after initial wake signRequests=1 serviceRunning=true daemonNotification=true
+10-14 21:32:42.581  3388  3404 I DaemonProof: 222133 pending notification text=正在准备自动签到…
+10-14 21:33:02.583  3388  3404 I DaemonProof: 242135 after receiver watchdog serviceRunning=true signRequests=1
+10-14 21:34:04.724  3388  3409 I DaemonProof: ACTUAL_HTTP attempt=2 GET https://api.example.invalid/course/stu_scan_sign.action?courseSchedId=7654321&timestamp=1791984844723&id=fixture-user
+10-14 21:34:04.796  3388  3404 I DaemonProof: 304348 retryGapMs=82237 actualSignRequests=2
+10-14 21:34:04.797  3388  3404 I DaemonProof: 304349 final serviceRunning=false daemonNotification=false notifications=[5512:自动签到成功]
+10-14 21:34:04.799  3388  3404 I DaemonProof: 304351 production sign history records=2 successRecords=1 source=AUTO
+10-14 21:34:04.799  3388  3404 I DaemonProof: 304351 PASS receiver

@@ -1,0 +1,11 @@
+--------- beginning of main
+10-14 21:30:45.400  2884  2901 I DaemonProof: 104952 scenario=restart revision=baseline-4593162 sdk=35
+10-14 21:30:45.429  2884  2901 I DaemonProof: 104981 fixture onlyCourse=7654321 targetOffsetMs=180000 deadlineMs=1791986445000 daemonEnabled=true batteryExempt=true
+10-14 21:30:56.506  2884  2901 I DaemonProof: 116058 before repeated start serviceRunning=true foreground=true signRequests=0
+10-14 21:31:00.020  2884  2901 I DaemonProof: 119572 after repeated start serviceRunning=false foreground=false signRequests=0
+10-14 21:31:00.022  2884  2901 I DaemonProof: 119574 FAIL IllegalStateException: Repeated START cancelled old loop and stopped replacement service
+10-14 21:31:00.022  2884  2901 E DaemonProof: Harness failure
+10-14 21:31:00.022  2884  2901 E DaemonProof: java.lang.IllegalStateException: Repeated START cancelled old loop and stopped replacement service
+10-14 21:31:00.022  2884  2901 E DaemonProof: 	at com.ucas.qingxin.signin.attendance.DaemonProofInstrumentation.restartScenario(DaemonProofInstrumentation.kt:174)
+10-14 21:31:00.022  2884  2901 E DaemonProof: 	at com.ucas.qingxin.signin.attendance.DaemonProofInstrumentation.onStart(DaemonProofInstrumentation.kt:61)
+10-14 21:31:00.022  2884  2901 E DaemonProof: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2594)
