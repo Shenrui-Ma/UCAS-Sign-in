@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ucas.qingxin.signin.QingxinApp
 import com.ucas.qingxin.signin.attendance.ScanPayload
+import com.ucas.qingxin.signin.attendance.ScanTimestampPolicy
 import com.ucas.qingxin.signin.data.SignOutcome
 import com.ucas.qingxin.signin.data.SignResult
 import com.ucas.qingxin.signin.logging.LogKind
@@ -62,19 +63,41 @@ data class ScanUiState(
      * 这类含糊拒绝最需要的分辨依据。
      */
     val submittedUrl: String = "",
+    /**
+     * 本次取景的**实测**识别耗时（人话，如「取景 0.6 秒后第 3 帧解出 · …」）。
+     *
+     * ## 为什么这件事要摊给用户看
+     * 现场反馈只有「识别过慢」四个字，而这四个字对应两条完全不同的处置：解码本身慢
+     * （要改解码配置）还是根本没对准 / 没对焦上（只能等或提示）。没有数字时两者无法区分，
+     * 于是每一次「慢」都会变成一次盲猜。这一行连同 [com.ucas.qingxin.signin.history.SignRecord]
+     * 一起，让下一份现场记录自己就能分辨（判读方法见 [ScanPerf.hitFrame]）。
+     */
+    val scanPerf: String = "",
     /** `timestamp` 的来源说明（二维码自带 / 本校校时补入）。 */
     val timestampNote: String = "",
     /**
-     * 连扫模式。
+     * 连扫模式（**默认开**）。
      *
      * ## 为什么需要它
      * 学校的班牌签到码**大约每 5 秒轮换一次**（[QingxinApiService.QR_REFRESH_CAP_MS]，
      * 由原版反编译确认），而用户常常是在码刚过期的那一刻扫上的 —— 学校只会回
      * 「请刷新后重试」。此时真正该做的动作是「什么都别动，继续对着班牌」，
      * 而不是「看提示 → 点继续扫码 → 重新对焦」。连扫模式就是把后三步省掉：
-     * 出结果 → 短暂回显 → **自动重新开始取景**。
+     * 失败 → 短暂回显 → **自动重新开始取景**。
+     *
+     * ## 为什么默认开（2026-10-14 起）
+     * 现场连续三次失败记录（`docs/sign-records.txt`）与用户的复述
+     * （「识别过慢，码过期后才扫完」）指向同一件事：**第一次就扫上的概率不够高**，
+     * 而每一次失败都要用户手动重来一遍，一次手动重来又要重新对焦、
+     * 又要再赌一次码还没轮换。默认关闭等于把这个代价固定收取。
+     *
+     * ## 成功为什么不重扫（本次同时改的）
+     * 连扫只在**失败**后自动重开取景；一旦成功就停在结果卡片上。
+     * 原来的语义是「成功也重新取景」，那样用户签完还站在那里，班牌下一帧新码会被
+     * 再提交一次（去重窗口只有 3 秒，挡不住 5 秒后的新码）—— 同一场课重复签到。
+     * 见 [settle]。
      */
-    val continuous: Boolean = false,
+    val continuous: Boolean = true,
     /** 连扫模式下的瞬时回显（成功 / 失败 / 「同一张码，已跳过」都写这里）。 */
     val flash: String = "",
     /** [flash] 是成功还是失败（只影响配色）。 */
@@ -83,15 +106,16 @@ data class ScanUiState(
     val session: List<ScanAttempt> = emptyList(),
 ) {
     /**
-     * 是否已有终态（成功或失败）。
+     * 是否已有终态（成功或失败），界面据此**停掉取景**并换成结果卡片。
      *
-     * 界面据此**停掉取景**并换成结果卡片：继续对着同一张二维码取景没有意义，
-     * 而且相机会一直吃电 —— 现场场景下用户可能盯着结果看很久。
+     * 判据只有「有没有终态」一条，不再看连扫开关：连扫模式下**失败**没有终态
+     * （失败进 [flash] / [session]，取景必须留着），而**成功**有终态（见 [continuous]：
+     * 成功就该收工，继续扫只会重复签到）。因此这一条同时满足两种模式。
      *
-     * **连扫模式下恒为 false**：那时不许停取景，否则「自动重新开始」无从谈起。
-     * 连扫的结果走 [flash] 与 [session]，不占结果卡片。
+     * 继续对着同一张二维码取景没有意义，而且相机会一直吃电 ——
+     * 现场场景下用户可能盯着结果看很久。
      */
-    val finished: Boolean get() = !continuous && (success.isNotEmpty() || error.isNotEmpty())
+    val finished: Boolean get() = success.isNotEmpty() || error.isNotEmpty()
 }
 
 /**
@@ -175,8 +199,15 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         if (on) gate.set(false)
     }
 
-    /** 相机解出一段文本（可能来自任意二维码，因此必须先分类再决定动作）。 */
-    fun onDecoded(raw: String) {
+    /**
+     * 相机解出一段文本（可能来自任意二维码，因此必须先分类再决定动作）。
+     *
+     * [perf] 是这一帧的实测识别耗时（由 [FastScanAnalyzer] 计量）。它**必须在这里落盘**：
+     * 现场「扫得慢」是一句主观描述，而帧数 / 单帧毫秒是唯一能复核的证据。
+     * 三条分支（含不发请求的 [ScanPayload.NotSign]）都要留下它 ——
+     * 「扫了半天，扫出来是别的东西」同样是需要解释的现场。
+     */
+    fun onDecoded(raw: String, perf: ScanPerf? = null) {
         // 连扫去重：同一张码在窗口内只提交一次（理由见 submitted）。
         // 必须在取闸门**之前**做，且跳过时**不占闸门** —— 这一帧应当被当作没看见。
         //
@@ -195,6 +226,12 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         }
         // 原文先落界面：下面每一条分支（含 Unknown 与 NotSign）都要能回看它。
         _ui.update { it.copy(rawText = raw) }
+        // 识别耗时与原文一起落界面 / 落盘：它是对「这张码怎么来的」的补充说明。
+        if (perf != null) {
+            val human = perf.human()
+            _ui.update { it.copy(scanPerf = human) }
+            app.signLog.append(LogKind.SCAN, "识别耗时" to human)
+        }
         // 现场诊断：原文与分类都落盘。分类决定「发不发请求」，因此两者必须成组出现 ——
         // 只记原文会看不出「为什么没发请求」，只记分类则丢了原始证据。
         app.signLog.append(LogKind.SCAN, "原文" to raw)
@@ -245,53 +282,84 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                     "判定" to "PlatformSign / 7.0 平台签到码",
                     "动作" to "发请求",
                 )
-                viewModelScope.launch { runSign(payload.path, payload.query, "", "7.0 平台签到码", raw) }
+                viewModelScope.launch {
+                    runSign(payload.path, payload.query, "", "7.0 平台签到码", raw, "", decision = null)
+                }
             }
         }
     }
 
     /**
-     * 旧通道：必要时先补一个学校校时，再提交。
+     * 旧通道：先按 [ScanTimestampPolicy] 决定提交哪个 `timestamp`，再提交。
      *
-     * 只有二维码**没带** `timestamp` 时才去校时（见 [ScanPayload.DirectSign.withTimestamp]）：
-     * 校时是一次额外的网络往返，二维码自己带了时间戳时它纯属白等。
+     * 校时不是白花的往返：二维码自带的时间戳够了就直接照抄（不取校时），
+     * 只有当它**看起来已经陈旧**时才去取一次校时做精确判断（见
+     * [ScanTimestampPolicy.looksStaleByLocalClock]）。
      */
     private suspend fun submitDirect(payload: ScanPayload.DirectSign, raw: String) {
         markSubmitting()
-        val query = if (payload.needsTimestamp) {
-            val schoolNowMs = try {
+        val qrTsMs = payload.qrTimestampMs
+
+        // 廉价筛查：按**本机**时钟看这张码还很新，就照抄 —— 与小程序逐字一致，
+        // 也不为一次现场签到多花一个校时往返（绝大多数现场扫码都属于这种）。
+        // 只有「看起来已经旧了」才去取校时做精确判断；本机时钟不准只会让我们
+        // 多取一次校时，不会让结论出错（最终判定一律以校时为准）。
+        val schoolNowMs = if (ScanTimestampPolicy.looksStaleByLocalClock(qrTsMs, System.currentTimeMillis())) {
+            try {
                 app.qrTimeline.syncClock().schoolNowMs
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ApiException) {
-                fail(e.message ?: "学校校时失败，请重试")
-                return
+                // 校时拿不到不等于签到失败：二维码自带时间戳时我们仍有一个
+                // 「学校自己发出来的」值可以照抄（见策略的不变量 2）。
+                null
             }
-            payload.withTimestamp(schoolNowMs)
         } else {
-            payload.submitQuery
+            null
         }
+
+        val decision = ScanTimestampPolicy.resolve(qrTsMs, schoolNowMs)
+        if (decision == null) {
+            fail("学校校时失败，请重试")
+            return
+        }
+        val query = payload.withTimestampOf(decision.valueMs)
+        val note = timestampNoteFor(payload, decision)
         _ui.update {
             it.copy(
                 submittedUrl = previewOf(payload.path, query),
-                timestampNote = timestampNoteFor(payload),
+                timestampNote = note,
             )
         }
-        runSign(payload.path, query, payload.identifier, payload.label, raw)
+        runSign(payload.path, query, payload.identifier, payload.label, raw, note, decision)
     }
 
     /**
      * `timestamp` 的来源说明 —— 扫码现场最值得交代的一句话。
      *
-     * 三种情形必须能分开看：码里本来就有（原样带着）、码里没有但我们照抄重放（**不补**）、
-     * 请求由我们拼所以要自己补（补）。学校那句「签到码已失效」与这条线的相关性最高，
-     * 因此它必须出现在结果卡片上，而不是只写在注释里。
+     * 四种情形必须能分开看，因为它们对「学校为什么拒」指向完全不同的结论：
+     *
+     * | 情形 | 说明 | 指向 |
+     * | --- | --- | --- |
+     * | 码里本来就有、且够新 | **原样重放**，未增删任何参数 | 参数不可能是原因 |
+     * | 码里本来就有、但已陈旧 | 已改用本校校时提交 | 班牌不再刷新，或班牌时钟偏了 |
+     * | 码里没有 | 校时不可用，沿用原值 | 我们没动过它 |
+     * | 请求由我们拼（裸编号） | 已用本校校时补入 | —— |
      */
-    private fun timestampNoteFor(payload: ScanPayload.DirectSign): String = when {
-        payload.isReplay && payload.qrTimestamp != null ->
-            "timestamp 取自二维码，原样重放，未增删任何参数"
-        payload.isReplay ->
-            "二维码未带 timestamp，按原样重放（不代学校补）"
-        else ->
+    private fun timestampNoteFor(
+        payload: ScanPayload.DirectSign,
+        decision: ScanTimestampPolicy.Decision,
+    ): String = when {
+        decision.confidence == ScanTimestampPolicy.Decision.Confidence.NO_QR_TIMESTAMP ->
             "二维码只是一个裸编号，请求由本应用拼出，已用本校校时补入 timestamp"
+        decision.confidence == ScanTimestampPolicy.Decision.Confidence.NO_SCHOOL_CLOCK ->
+            "校时不可用，timestamp 沿用二维码原值（不使用本机时间）"
+        decision.qrStale ->
+            "二维码自带的时间戳已过去 ${decision.humanQrAge()}，" +
+                "超过班牌 ${ScanTimestampPolicy.REPLAY_TOLERANCE_MS / 1000} 秒的生成周期，" +
+                "已改用本校校时提交"
+        else ->
+            "timestamp 取自二维码（距本校校时 ${decision.humanQrAge()}），原样重放，未增删任何参数"
     }
 
     private suspend fun runSign(
@@ -300,6 +368,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         code: String,
         kind: String,
         raw: String,
+        note: String,
+        decision: ScanTimestampPolicy.Decision?,
     ) {
         markSubmitting()
         try {
@@ -309,6 +379,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 code = code,
                 kind = kind,
                 raw = raw,
+                note = note,
             )
             app.signLog.append(
                 LogKind.OUTCOME,
@@ -320,7 +391,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             if (result.outcome == SignOutcome.SIGNED) {
                 settle(ok = true, text = result.message.ifBlank { "签到成功" })
             } else {
-                settle(ok = false, text = explain(result))
+                settle(ok = false, text = explain(result, decision))
             }
         } catch (e: CancellationException) {
             throw e
@@ -340,28 +411,36 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 落定一次尝试。
      *
-     * ## 两条路为什么必须分开
-     * 单发模式停在结果卡片上等用户读；连扫模式**不许停**，只能短暂回显再自动继续。
-     * 若两者共用同一组字段，连扫就得反复清掉 `success` / `error` 才能恢复取景 ——
-     * 那种「先写进去再擦掉」的状态很难保证不出中间态，而 [ScanUiState.finished]
-     * 一旦为真，取景就被拆掉了。
+     * ## 三句话
+     * 1. **成功 = 收工**：不分成败模式，一律写进结果卡片。成功了还继续对着班牌扫，
+     *    只会把班牌 5 秒后的新码再提交一遍 —— 同一场课重复签到，纯属白烧请求。
+     * 2. **连扫失败 = 不停取景**：失败只写瞬时回显与会话列表，取景留着，
+     *    短暂停留后自动重开（连扫的全部意义）。
+     * 3. **单发失败 = 结果卡片**：停取景，等用户自己决定要不要再来一次。
+     *
+     * ## 为什么成功这条不能塞进 flash
+     * [ScanUiState.finished] 只看 [ScanUiState.success] / [ScanUiState.error]。
+     * 若成功也走 flash，连扫模式下成功就**不会**收起取景，
+     * 于是「签上了却还在扫」—— 见第 1 条。
      */
     private fun settle(ok: Boolean, text: String) {
         val attempt = ScanAttempt(ok = ok, summary = text.lineSequence().first().take(48))
+        if (ok) {
+            // flash 也要一并清掉：连扫模式下它此刻写的正是「正在提交签到…」，
+            // 而结果卡片与它在同一个 Box 里，不清掉就会有一行字压在卡片上。
+            _ui.update { it.copy(submitting = false, success = text, error = "", flash = "") }
+            return
+        }
         _ui.update { s ->
             if (s.continuous) {
                 s.copy(
                     submitting = false,
                     flash = text,
-                    flashOk = ok,
+                    flashOk = false,
                     session = (listOf(attempt) + s.session).take(MAX_SESSION),
                 )
             } else {
-                s.copy(
-                    submitting = false,
-                    success = if (ok) text else "",
-                    error = if (ok) "" else text,
-                )
+                s.copy(submitting = false, success = "", error = text)
             }
         }
         if (!_ui.value.continuous) return
@@ -370,9 +449,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             // 用户可能在这两秒里关掉了连扫：那就把结果补写进结果卡片，
             // 否则这次尝试在界面上会凭空消失（用闭包里的 text，不读已被清掉的 flash）。
             if (!_ui.value.continuous) {
-                _ui.update {
-                    it.copy(success = if (ok) text else "", error = if (ok) "" else text)
-                }
+                _ui.update { it.copy(success = "", error = text) }
                 return@launch
             }
             // 放闸门并开始下一轮 —— 这就是「连扫」的全部动作。
@@ -411,14 +488,24 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 失败原因：能给可执行动作的就给，给不出才只回显学校的原话。
      *
-     * 「签到码已失效」必须由我们补一句：学校的签到码是**短命**的 —— 原版实现里
-     * 二维码刷新上限就是 5 秒（[QingxinApiService.QR_REFRESH_CAP_MS]，
-     * 由原版反编译确认），所以它那句「请刷新后重试」对学生等于没说。
-     * 现场真正该做的是：别停下来看提示，直接对准班牌最新一屏重扫。
+     * 「已失效」这条必须分岔，因为**我们是否已经为它改过参数**决定了下一句话：
+     *
+     * - **改过**（二维码自带的时间戳明显陈旧，[ScanTimestampPolicy] 已改用本校校时）→
+     *   参数取值已经试过更好的那个，问题不在我们发出去的东西上，而在这张码本身。
+     *   这时如实告诉用户它有多旧，别再让他对着同一块不再刷新的班牌反复重扫。
+     * - **没改过**（码本来就很新）→ 学校那句「请刷新后重试」确实是字面意思：
+     *   二维码刷新上限就是 5 秒（[QingxinApiService.QR_REFRESH_CAP_MS]，
+     *   由原版反编译确认），别停下来看提示，直接对准最新一屏重扫。
      */
-    private fun explain(result: SignResult): String {
+    private fun explain(result: SignResult, decision: ScanTimestampPolicy.Decision?): String {
         val base = result.message.ifBlank { outcomeMessage(result.outcome) }
         if (result.outcome != SignOutcome.QR_EXPIRED) return base
+        if (decision?.qrStale == true) {
+            val age = decision.humanQrAge()
+            return "$base\n这张码上的时间戳已经过去 $age（班牌大约每 5 秒就该换一帧），" +
+                "应用已改用本校校时重发，仍被学校判为失效 —— 麻烦换一块正在刷新的班牌，" +
+                "或请老师重新开一次签到。"
+        }
         return "$base\n班牌的签到码大约每 5 秒轮换一次，请对准最新一屏立刻重扫。"
     }
 

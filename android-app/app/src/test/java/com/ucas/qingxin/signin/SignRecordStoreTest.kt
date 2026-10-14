@@ -32,7 +32,9 @@ class SignRecordStoreTest {
         ok: Boolean = true,
         message: String = "签到成功",
         raw: String = "https://iclass.ucas.edu.cn/app/course/stu_scan_sign.action?courseSchedId=1234567",
-    ) = SignRecord(atMs, source, code, kind, ok, message, raw)
+        outcome: String = "",
+        note: String = "",
+    ) = SignRecord(atMs, source, code, kind, ok, message, raw, outcome, note)
 
     @Test
     fun `单条记录往返无损`() {
@@ -142,6 +144,54 @@ class SignRecordStoreTest {
         assertTrue(text.contains("手动录入"))
         assertTrue(text.contains("1111111"))
         assertTrue(text.contains("签到码已失效"))
+    }
+
+    @Test
+    fun `判定与参数来源往返无损_且只出现在失败条目里`() {
+        val failed = sample(
+            ok = false,
+            message = "签到码已失效，请刷新后重试",
+            outcome = "QR_EXPIRED",
+            note = "二维码自带的时间戳已过去 3 分 44 秒，已改用本校校时提交",
+        )
+        val parsed = SignRecordStore.parseAll(SignRecordStore.format(failed))
+        assertEquals(1, parsed.size)
+        assertEquals("QR_EXPIRED", parsed[0].outcome)
+        assertEquals(failed.note, parsed[0].note)
+
+        val text = SignRecordStore.exportText(listOf(failed), exportedAtMs = 0L)
+        assertTrue("失败条目必须能看出判定结果", text.contains("判定：QR_EXPIRED"))
+        assertTrue(text.contains("参数来源：二维码自带的时间戳已过去 3 分 44 秒"))
+
+        // 成功条目挂一个 `SIGNED` 是纯噪声：导出里不出现「判定」这一行。
+        val okText = SignRecordStore.exportText(
+            listOf(sample(ok = true, outcome = "SIGNED")),
+            exportedAtMs = 0L,
+        )
+        assertFalse(okText.contains("判定："))
+    }
+
+    @Test
+    fun `没有新字段的旧记录仍能正常读回`() {
+        // 升级前落盘的文件里没有 outcome / note 两行。反过来也成立：
+        // 这两个字段为空时 format 必须**不写**它们，否则文件里全是空行。
+        val block = SignRecordStore.format(sample())
+        assertFalse(block.contains("outcome"))
+        assertFalse(block.contains("note"))
+
+        // 手工拼一段 1.3.3 及之前版本写出来的正文（只有四个字段），必须照样读得回来。
+        val legacy = "\n=== 1760000000000|SCAN|0 ===\n" +
+            "code\u0001" + "79B6E9E491A34BCD9121FDDDCA91F9A0" + "\n" +
+            "kind\u000132 位二维码标识\n" +
+            "message\u0001签到码已失效，请刷新后重试\n" +
+            "raw\u0001app/course/stu_scan_sign.action?timeTableId=79B6E9E491A34BCD9121FDDDCA91F9A0\n"
+        val parsed = SignRecordStore.parseAll(legacy)
+        assertEquals(1, parsed.size)
+        assertEquals("79B6E9E491A34BCD9121FDDDCA91F9A0", parsed[0].code)
+        assertEquals("签到码已失效，请刷新后重试", parsed[0].message)
+        assertFalse(parsed[0].ok)
+        assertEquals("", parsed[0].outcome)
+        assertEquals("", parsed[0].note)
     }
 
     @Test

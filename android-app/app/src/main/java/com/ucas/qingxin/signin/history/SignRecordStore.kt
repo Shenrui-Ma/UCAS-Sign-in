@@ -55,6 +55,26 @@ data class SignRecord(
     val message: String,
     /** 二维码原文（仅扫码时有）；用于事后核对是哪个码。 */
     val raw: String = "",
+    /**
+     * 机器可读的判定结果（如 `QR_EXPIRED` / `OUTSIDE_SIGN_WINDOW`），仅失败时展示。
+     *
+     * ## 为什么单列一个字段（2026-10-14 补记）
+     * 学校对不同的拒绝原因会给**同一句**「签到码已失效」，而我们自己的解析会把它们
+     * 分成 `QR_EXPIRED` 与 `SIGN_RESULT_UNKNOWN` 两种 —— 这两者指向的下一步动作
+     * 完全不同（前者是码的问题，后者要回首页核对状态）。第一份真机失败记录
+     * （`docs/sign-records.txt`）里恰好只剩学校那句原话，判定结果无从追溯，
+     * 因此把它一并存下来。
+     *
+     * 空串 = 该条记录产生于本次升级之前（旧文件仍能正常读回，见 [parseAll]）。
+     */
+    val outcome: String = "",
+    /**
+     * 本次提交的**参数来源说明**（人话，如「已改用本校校时提交」）。
+     *
+     * 与 [outcome] 一起，让一份分享出来的记录**自己就能说明白**
+     * 我们发出去的到底是什么，不必再让用户去翻调试日志。
+     */
+    val note: String = "",
 )
 
 /**
@@ -177,6 +197,14 @@ class SignRecordStore(private val dir: File) {
             append('\n').append(KEY_CODE).append(FIELD_SEP).append(escape(record.code))
             append('\n').append(KEY_KIND).append(FIELD_SEP).append(escape(record.kind))
             append('\n').append(KEY_MESSAGE).append(FIELD_SEP).append(escape(record.message))
+            // 两个新字段都只在有内容时写：旧版本读到的记录、以及绝大多数正常签到
+            // 都不需要它们，写一堆空行只会让这份文件更难读。
+            if (record.outcome.isNotEmpty()) {
+                append('\n').append(KEY_OUTCOME).append(FIELD_SEP).append(escape(record.outcome))
+            }
+            if (record.note.isNotEmpty()) {
+                append('\n').append(KEY_NOTE).append(FIELD_SEP).append(escape(record.note))
+            }
             if (record.raw.isNotEmpty()) {
                 // 二维码原文仍过一道学号脱敏：这段文本会被分享出去。
                 append('\n').append(KEY_RAW).append(FIELD_SEP)
@@ -210,7 +238,7 @@ class SignRecordStore(private val dir: File) {
             val source = SignSource.entries.firstOrNull { it.name == parts[1] } ?: return null
             val ok = parts[2].trim() == "1"
 
-            val fields = HashMap<String, String>(4)
+            val fields = HashMap<String, String>(6)
             for (line in lines.drop(1)) {
                 val at = line.indexOf(FIELD_SEP)
                 if (at <= 0) continue
@@ -224,6 +252,8 @@ class SignRecordStore(private val dir: File) {
                 ok = ok,
                 message = fields[KEY_MESSAGE].orEmpty(),
                 raw = fields[KEY_RAW].orEmpty(),
+                outcome = fields[KEY_OUTCOME].orEmpty(),
+                note = fields[KEY_NOTE].orEmpty(),
             )
         }
 
@@ -255,6 +285,14 @@ class SignRecordStore(private val dir: File) {
                     append('\n')
                 }
                 append("  说明：").append(record.message).append('\n')
+                if (record.note.isNotEmpty()) {
+                    append("  参数来源：").append(record.note).append('\n')
+                }
+                // 判定只在失败时给：成功的记录再挂一个 `SIGNED` 是纯噪声，
+                // 而失败时它是**唯一**能把「码失效」与「结果未知」分开的东西。
+                if (record.outcome.isNotEmpty() && !record.ok) {
+                    append("  判定：").append(record.outcome).append('\n')
+                }
                 if (record.raw.isNotEmpty()) {
                     append("  二维码原文：").append(record.raw).append('\n')
                 }
@@ -300,6 +338,8 @@ class SignRecordStore(private val dir: File) {
         private const val KEY_KIND = "kind"
         private const val KEY_MESSAGE = "message"
         private const val KEY_RAW = "raw"
+        private const val KEY_OUTCOME = "outcome"
+        private const val KEY_NOTE = "note"
 
         /** 从 [text] 的**记录边界**起取最后 [maxBytes] 字节。 */
         private fun tailFromBoundary(text: String, maxBytes: Int): String {

@@ -75,8 +75,15 @@ class AttendanceRepository(
         kind: String = "",
         raw: String = "",
         source: SignSource = SignSource.SCAN,
+        /**
+         * 这次提交的**参数来源说明**（如「timestamp 已改用本校校时」），只用于记账。
+         *
+         * 存在意义是让下一次现场失败可以离线归因：历史里同时留下「我们发了什么」
+         * （[code] + [query]）与「我们为什么这么发」，就不必再让用户去翻调试日志。
+         */
+        note: String = "",
     ): SignResult = signMutex.withLock {
-        record(source, code, kind, raw) { performScanSign(path, query) }
+        record(source, code, kind, raw, note) { performScanSign(path, query) }
     }
 
     private suspend fun performScanSign(path: String, query: String): SignResult {
@@ -132,6 +139,7 @@ class AttendanceRepository(
         code: String,
         kind: String,
         raw: String,
+        note: String = "",
         block: suspend () -> SignResult,
     ): SignResult {
         try {
@@ -145,6 +153,8 @@ class AttendanceRepository(
                     ok = result.outcome == SignOutcome.SIGNED,
                     message = result.message.ifBlank { OUTCOME_FALLBACK[result.outcome] ?: "" },
                     raw = raw,
+                    outcome = result.outcome.name,
+                    note = note,
                 ),
             )
             return result
@@ -159,6 +169,8 @@ class AttendanceRepository(
                     message = listOfNotNull(e.code, e.message).filter { it.isNotBlank() }
                         .joinToString(": "),
                     raw = raw,
+                    outcome = e.code,
+                    note = note,
                 ),
             )
             throw e
@@ -173,6 +185,8 @@ class AttendanceRepository(
                     ok = false,
                     message = "${e::class.java.simpleName}: ${e.message ?: ""}",
                     raw = raw,
+                    outcome = e::class.java.simpleName,
+                    note = note,
                 ),
             )
             throw e

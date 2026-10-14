@@ -323,10 +323,13 @@ class QingxinApiService(
      *    RememberSignIn 的形态；扫码这条通道小程序用的是 POST。两者在本项目里
      *    各自保留，谁也不要「统一」成对方 —— 同一个学校对不同历史实现的兼容程度不同，
      *    把已验证过的请求形态改掉是在拿唯一稳定的参照物冒险。
-     * 2. **`timestamp` 不新增**：二维码带了就原样带着，二维码没带就**不补**
-     *    （见 `ScanPayload.DirectSign.needsTimestamp`）。小程序这一步只有
-     *    `二维码query + "&id=" + uid`，从不写时间戳；1.3.1 曾在这里自行补一个，
-     *    已按「不偏离唯一已知可用的客户端」改掉（`docs/lecture-signin-research.md` §10.16）。
+     * 2. **`timestamp` 由调用方按新鲜度决定**：二维码自带的值还够新就照抄，
+     *    已陈旧（班牌不再刷新 / 班牌时钟偏了）就改用本校校时 ——
+     *    判定在 `com.ucas.qingxin.signin.attendance.ScanTimestampPolicy`。
+     *    小程序这一步只有 `二维码query + "&id=" + uid`，从不写时间戳，
+     *    因为它总是当场读屏、到手的码永远新鲜；我们的用户可能面对一块不再刷新的班牌
+     *    （真机实测：时间戳已过去 224 秒），照抄必然被拒。
+     *    详见 `docs/lecture-signin-research.md` §10.16（1.3.2 的反向修法）与 §10.19（结论）。
      * 3. **`id` 用本次登录用户自己的** —— 小程序的 `userInfo.uid` 与我们的
      *    `session.userId` 是同一个字段。
      *

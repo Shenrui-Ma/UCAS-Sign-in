@@ -346,6 +346,16 @@ private fun RecordRow(record: SignRecord) {
                     lineHeight = 17.sp,
                 )
             }
+            if (record.note.isNotEmpty()) {
+                // 参数来源说明紧跟在学校原话之后：现场失败时，
+                // 「学校说了什么」与「我们发的是什么」必须一起看才有意义。
+                Text(
+                    "↳ ${record.note}",
+                    fontSize = 11.sp,
+                    color = REC_SUB,
+                    lineHeight = 15.sp,
+                )
+            }
             if (record.raw.isNotEmpty()) {
                 // 二维码原文可选中：现场核对「是不是这张码」时需要整段复制出去比对。
                 SelectionContainer {
